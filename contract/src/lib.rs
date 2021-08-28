@@ -7,6 +7,7 @@ use near_sdk::{
 };
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::promise_result_as_success;
+use std::collections::HashMap;
 
 
 use crate::external::*;
@@ -21,6 +22,7 @@ const NO_DEPOSIT: Balance = 0;
 
 near_sdk::setup_alloc!();
 
+pub type Payout = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
 pub type TokenId = String;
 
@@ -202,10 +204,13 @@ impl Contract {
         let market_data = self.market.remove(&contract_and_token_id).expect("No sale");
 
 
-        ext_contract::nft_transfer(
+
+        ext_contract::nft_transfer_payout(
             buyer_id.clone(),
             token_id,
             market_data.approval_id.into(),
+            market_data.price.into(),
+            10, // max length payout
             &nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
@@ -225,20 +230,49 @@ impl Contract {
         buyer_id: AccountId,
         market_data: MarketData,
     ) -> U128 {
-        let result = promise_result_as_success();
-        if result.is_none() {
+        let payout_option = promise_result_as_success().and_then(|value| {
+            // None means a bad payout from bad NFT contract
+            near_sdk::serde_json::from_slice::<Payout>(&value)
+                .ok()
+                .and_then(|payout| {
+                    let mut remainder = market_data.price;
+                    for &value in payout.values() {
+                        remainder = remainder.checked_sub(value.0)?;
+                    }
+                    if remainder == 0 || remainder == 1 {
+                        Some(payout)
+                    } else {
+                        None
+                    }
+                })
+        });
+        let payout = if let Some(payout_option) = payout_option {
+            payout_option
+        } else {
             if market_data.ft_token_id == "near" {
                 Promise::new(buyer_id).transfer(u128::from(market_data.price));
             }
+            // leave function and return all FTs in ft_resolve_transfer
+            return market_data.price.into();
+        };
+
+        // Payout (transfer to royalties and seller)
+        if market_data.ft_token_id == "near" {
+            // 5% fee for treasury
+            let treasury_fee = (market_data.price * 500) / 10_000;
+
+            for (receiver_id, amount) in payout {
+                if receiver_id == market_data.owner_id {
+                    Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
+                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                } else {
+                    Promise::new(receiver_id).transfer(amount.0);
+                }
+            }
+
             return market_data.price.into();
         } else {
-            if market_data.ft_token_id == "near" {
-                Promise::new(market_data.owner_id).transfer(market_data.price);
-                // refund all FTs (won't be any)
-                return market_data.price.into();
-            } else {
-                U128(0)
-            }
+            U128(0)
         }
     }
 
@@ -330,7 +364,7 @@ impl Contract {
         let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist ");
 
         assert!(
-            [market_data.owner_id, self.owner_id.clone()].contains(&env::predecessor_account_id()),
+            [market_data.owner_id.clone(), self.owner_id.clone()].contains(&env::predecessor_account_id()),
             "Paras: Seller or owner only"
         );
 
