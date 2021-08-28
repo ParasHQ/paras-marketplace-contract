@@ -21,7 +21,7 @@ trait NonFungibleTokenApprovalsReceiver {
 }
 
 #[near_bindgen]
-impl NonFungibleTokenApprovalsReceiver for MarketplaceContract {
+impl NonFungibleTokenApprovalsReceiver for Contract {
     fn nft_on_approve(
         &mut self,
         token_id: TokenId,
@@ -64,9 +64,7 @@ impl NonFungibleTokenApprovalsReceiver for MarketplaceContract {
             env::panic("Paras: ft_token_id not supported".as_bytes());
         }
 
-        // env::log(format!("add_sale for owner: {}", &owner_id).as_bytes());
-
-        self.add_market_data(
+        self.internal_add_market_data(
             owner_id, 
             approval_id, 
             nft_contract_id, 

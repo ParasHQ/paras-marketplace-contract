@@ -50,8 +50,9 @@ pub struct MarketDataJson {
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct MarketplaceContract {
+pub struct Contract {
     pub owner_id: AccountId,
+    pub treasury_id: AccountId,
     pub market: UnorderedMap<ContractAndTokenId, MarketData>,
     pub approved_ft_token_ids: UnorderedSet<AccountId>,
     pub approved_nft_contract_ids: UnorderedSet<AccountId>,
@@ -65,16 +66,18 @@ pub enum StorageKey {
 }
 
 #[near_bindgen]
-impl MarketplaceContract {
+impl Contract {
 
     #[init]
     pub fn new(
         owner_id: ValidAccountId, 
+        treasury_id: ValidAccountId,
         approved_ft_token_ids: Option<Vec<ValidAccountId>>,
         approved_nft_contract_ids: Option<Vec<ValidAccountId>>,
     ) -> Self {
         let mut this = Self {
             owner_id: owner_id.into(),
+            treasury_id: treasury_id.into(),
             market: UnorderedMap::new(StorageKey::Market),
             approved_ft_token_ids: UnorderedSet::new(StorageKey::FTTokenIds),
             approved_nft_contract_ids: UnorderedSet::new(StorageKey::NFTContractIds),
@@ -97,17 +100,58 @@ impl MarketplaceContract {
         this
     }
 
-    // Approved contracts
-    pub fn add_approved_nft_contract_id(
-        &mut self,
-        nft_contract_id: ValidAccountId
-    ) {
+    // Changing treasury & ownership
+
+    #[payable]
+    pub fn set_treasury(&mut self, treasury_id: ValidAccountId) {
+        assert_one_yocto();
         assert_eq!(
             env::predecessor_account_id(),
             self.owner_id,
             "Paras: Owner only"
         );
-        self.approved_nft_contract_ids.insert(&nft_contract_id.into());
+        self.treasury_id = treasury_id.to_string();
+    }
+
+    #[payable]
+    pub fn transfer_ownership(&mut self, owner_id: ValidAccountId) {
+        assert_one_yocto();
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "Paras: Owner only"
+        );
+        self.owner_id = owner_id.to_string();
+    }
+
+    // Approved contracts
+    #[payable]
+    pub fn add_approved_nft_contract_ids(&mut self, nft_contract_ids: Vec<ValidAccountId>) {
+        assert_one_yocto();
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "Paras: Owner only"
+        );
+        for nft_contract_id in nft_contract_ids {
+            self.approved_nft_contract_ids.insert(nft_contract_id.as_ref());
+        }
+    }
+
+    #[payable]
+    pub fn add_approved_ft_token_ids(
+        &mut self,
+        ft_token_ids: Vec<ValidAccountId>
+    ) {
+        assert_one_yocto();
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "Paras: Owner only"
+        );
+        for ft_token_id in ft_token_ids {
+            self.approved_ft_token_ids.insert(ft_token_id.as_ref());
+        }
     }
 
     // Buy & Payment
@@ -140,14 +184,14 @@ impl MarketplaceContract {
             "Paras: NEAR support only"
         );
 
-        self.process_purchase(
+        self.internal_process_purchase(
             nft_contract_id.into(),
             token_id,
             buyer_id,
         );
     }
 
-    fn process_purchase(
+    fn internal_process_purchase(
         &mut self,
         nft_contract_id: AccountId,
         token_id: TokenId,
@@ -171,7 +215,7 @@ impl MarketplaceContract {
             market_data,
             &env::current_account_id(),
             NO_DEPOSIT,
-            GAS_FOR_NFT_TRANSFER,
+            GAS_FOR_ROYALTIES,
         ))
     }
 
@@ -236,7 +280,7 @@ impl MarketplaceContract {
         );
     }
 
-    fn add_market_data(
+    fn internal_add_market_data(
         &mut self,
         owner_id: ValidAccountId,
         approval_id: u64,
@@ -285,10 +329,9 @@ impl MarketplaceContract {
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist ");
 
-        assert_eq!(
-            market_data.owner_id,
-            env::predecessor_account_id(),
-            "Paras: Seller only"
+        assert!(
+            [market_data.owner_id, self.owner_id.clone()].contains(&env::predecessor_account_id()),
+            "Paras: Seller or owner only"
         );
 
         self.market.remove(&contract_and_token_id);
@@ -324,6 +367,14 @@ impl MarketplaceContract {
             ft_token_id: market_data.ft_token_id, // "near" for NEAR token
             price: market_data.price.into(),
         }
+    }
+
+    pub fn supported_ft_token_ids(&self) -> Vec<AccountId> {
+        self.approved_ft_token_ids.to_vec()
+    }
+
+    pub fn supported_nft_contract_ids(&self) -> Vec<AccountId> {
+        self.approved_nft_contract_ids.to_vec()
     }
 }
 
