@@ -209,9 +209,9 @@ impl Contract {
         ext_contract::nft_transfer_payout(
             buyer_id.clone(),
             token_id,
-            market_data.approval_id.into(),
-            market_data.price.into(),
-            10, // max length payout
+            U64::from(market_data.approval_id),
+            U128::from(market_data.price),
+            10u32, // max length payout
             &nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
@@ -262,7 +262,7 @@ impl Contract {
                         "nft_contract_id": market_data.nft_contract_id,
                         "token_id": market_data.token_id,
                         "ft_token_id": market_data.ft_token_id,
-                        "price": market_data.price,
+                        "price": market_data.price.to_string(),
                         "buyer_id": buyer_id,
                     }
                 })
@@ -294,7 +294,7 @@ impl Contract {
                         "nft_contract_id": market_data.nft_contract_id,
                         "token_id": market_data.token_id,
                         "ft_token_id": market_data.ft_token_id,
-                        "price": market_data.price,
+                        "price": market_data.price.to_string(),
                         "buyer_id": buyer_id,
                     }
                 })
@@ -326,6 +326,12 @@ impl Contract {
             env::predecessor_account_id(),
             "Paras: Seller only"
         );
+
+        assert_eq!(
+            ft_token_id.to_string(),
+            market_data.ft_token_id,
+            "Paras: ft_token_id differs"
+        ); // sanity check
 
         market_data.price = price.into();
         self.market.insert(&contract_and_token_id, &market_data);
