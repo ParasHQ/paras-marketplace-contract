@@ -19,6 +19,7 @@ mod nft_callbacks;
 const GAS_FOR_NFT_TRANSFER: Gas = 15_000_000_000_000;
 const GAS_FOR_ROYALTIES: Gas = 115_000_000_000_000;
 const NO_DEPOSIT: Balance = 0;
+const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05 
 
 near_sdk::setup_alloc!();
 
@@ -274,7 +275,7 @@ impl Contract {
         // Payout (transfer to royalties and seller)
         if market_data.ft_token_id == "near" {
             // 5% fee for treasury
-            let treasury_fee = (market_data.price * 500) / 10_000;
+            let treasury_fee = market_data.price as u128 * TREASURY_FEE / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
