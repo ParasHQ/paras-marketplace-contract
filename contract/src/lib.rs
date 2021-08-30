@@ -19,6 +19,7 @@ mod nft_callbacks;
 const GAS_FOR_NFT_TRANSFER: Gas = 15_000_000_000_000;
 const GAS_FOR_ROYALTIES: Gas = 115_000_000_000_000;
 const NO_DEPOSIT: Balance = 0;
+const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05 
 
 near_sdk::setup_alloc!();
 
@@ -208,9 +209,9 @@ impl Contract {
         ext_contract::nft_transfer_payout(
             buyer_id.clone(),
             token_id,
-            market_data.approval_id.into(),
-            market_data.price.into(),
-            10, // max length payout
+            U64::from(market_data.approval_id),
+            U128::from(market_data.price),
+            10u32, // max length payout
             &nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
@@ -250,16 +251,31 @@ impl Contract {
             payout_option
         } else {
             if market_data.ft_token_id == "near" {
-                Promise::new(buyer_id).transfer(u128::from(market_data.price));
+                Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
             }
             // leave function and return all FTs in ft_resolve_transfer
+            env::log(
+                json!({
+                    "type": "resolve_purchase_fail",
+                    "params": {
+                        "owner_id": market_data.owner_id,
+                        "nft_contract_id": market_data.nft_contract_id,
+                        "token_id": market_data.token_id,
+                        "ft_token_id": market_data.ft_token_id,
+                        "price": market_data.price.to_string(),
+                        "buyer_id": buyer_id,
+                    }
+                })
+                .to_string()
+                .as_bytes(),
+            );
             return market_data.price.into();
         };
 
         // Payout (transfer to royalties and seller)
         if market_data.ft_token_id == "near" {
             // 5% fee for treasury
-            let treasury_fee = (market_data.price * 500) / 10_000;
+            let treasury_fee = market_data.price as u128 * TREASURY_FEE / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
@@ -268,7 +284,23 @@ impl Contract {
                 } else {
                     Promise::new(receiver_id).transfer(amount.0);
                 }
+                
             }
+            env::log(
+                json!({
+                    "type": "resolve_purchase",
+                    "params": {
+                        "owner_id": market_data.owner_id,
+                        "nft_contract_id": market_data.nft_contract_id,
+                        "token_id": market_data.token_id,
+                        "ft_token_id": market_data.ft_token_id,
+                        "price": market_data.price.to_string(),
+                        "buyer_id": buyer_id,
+                    }
+                })
+                .to_string()
+                .as_bytes(),
+            );
 
             return market_data.price.into();
         } else {
@@ -294,6 +326,12 @@ impl Contract {
             env::predecessor_account_id(),
             "Paras: Seller only"
         );
+
+        assert_eq!(
+            ft_token_id.to_string(),
+            market_data.ft_token_id,
+            "Paras: ft_token_id differs"
+        ); // sanity check
 
         market_data.price = price.into();
         self.market.insert(&contract_and_token_id, &market_data);
