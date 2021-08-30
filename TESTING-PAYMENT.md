@@ -27,7 +27,7 @@ near call --accountId dev-1630164914800-20665050242974 dev-1630164914800-2066505
     Price : 3 N
     Treasury Fee: 0.15 N -> to johnnear.testnet
     90% royalty: 2.7 N  -> orang.testnet (creator/artist)
-    10% - Treasury Fee: 0.15 N  -> gnaor.testnet (seller)
+    5% - Treasury Fee: 0.15 N  -> gnaor.testnet (seller)
 
     buyer: cymac.testnet
 ```
