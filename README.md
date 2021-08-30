@@ -21,12 +21,22 @@ env NEAR_ENV=local near --keyPath ~/.near/localnet/validator_key.json deploy --a
 
 ### Nft init
 ```
-env NEAR_ENV=local near call --keyPath ~/.near/localnet/validator_key.json --accountId marketplace.test.near marketplace.test.near new '{"owner_id":"marketplace.test.near","approved_nft_contract_ids":["comic.test.near"]}'
+env NEAR_ENV=local near call --keyPath ~/.near/localnet/validator_key.json --accountId marketplace.test.near marketplace.test.near new '{"owner_id":"marketplace.test.near","treasury_id":"treasury.test.near","approved_nft_contract_ids":["comic.test.near"]}'
 ```
 
 ### Nft sell (to NFT contract)
 ```
-env NEAR_ENV=local near call --keyPath ~/.near/localnet/validator_key.json --accountId alice.test.near comic.test.near nft_approve '{"token_id":"1:10","account_id":"marketplace.test.near","msg":"{\"price\":\"3000000000000000000000000\",\"ft_token_id\":\"near\"}"}' --depositYocto 1320000000000000000000
+env NEAR_ENV=local near call --keyPath ~/.near/localnet/validator_key.json --accountId alice.test.near comic.test.near nft_approve '{"token_id":"1:10","account_id":"marketplace.test.near","msg":"{\"price\":\"3000000000000000000000000\",\"ft_token_id\":\"near\"}"}' --depositYocto 2610000000000000000000
+```
+
+### Delete market data
+```
+env NEAR_ENV=local near call --keyPath ~/.near/localnet/validator_key.json --accountId alice.test.near marketplace.test.near delete_market_data '{"nft_contract_id":"comic.test.near", "token_id":"1:2"}' --depositYocto 1
+```
+
+### Update market data
+```
+env NEAR_ENV=local near call --keyPath ~/.near/localnet/validator_key.json --accountId alice.test.near marketplace.test.near update_market_data '{"nft_contract_id":"comic.test.near", "token_id":"1:2", "ft_token_id":"near","price":"5000000000000000000000000"}' --depositYocto 1
 ```
 
 ### Buy

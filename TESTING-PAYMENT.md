@@ -57,7 +57,7 @@ View call: dev-1630164914800-20665050242974.get_market_data({"nft_contract_id":"
 
 ## NFT buy
 ```
-near --accountId cymac.testnet dev-1630164914800-20665050242974 nft_buy '{"nft_contract_id":"dev-1630163823356-82615235483639","token_id":"2:1"}' --deposit 3 --gas 160000000000000
+near --accountId cymac.testnet dev-1630164914800-20665050242974 buy '{"nft_contract_id":"dev-1630163823356-82615235483639","token_id":"2:1"}' --deposit 3 --gas 160000000000000
 ```
 
 #### REsult
