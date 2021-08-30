@@ -7,6 +7,7 @@ use near_sdk::{
 };
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::promise_result_as_success;
+use std::collections::HashMap;
 
 
 use crate::external::*;
@@ -21,6 +22,7 @@ const NO_DEPOSIT: Balance = 0;
 
 near_sdk::setup_alloc!();
 
+pub type Payout = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
 pub type TokenId = String;
 
@@ -50,8 +52,9 @@ pub struct MarketDataJson {
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct MarketplaceContract {
+pub struct Contract {
     pub owner_id: AccountId,
+    pub treasury_id: AccountId,
     pub market: UnorderedMap<ContractAndTokenId, MarketData>,
     pub approved_ft_token_ids: UnorderedSet<AccountId>,
     pub approved_nft_contract_ids: UnorderedSet<AccountId>,
@@ -65,16 +68,18 @@ pub enum StorageKey {
 }
 
 #[near_bindgen]
-impl MarketplaceContract {
+impl Contract {
 
     #[init]
     pub fn new(
         owner_id: ValidAccountId, 
+        treasury_id: ValidAccountId,
         approved_ft_token_ids: Option<Vec<ValidAccountId>>,
         approved_nft_contract_ids: Option<Vec<ValidAccountId>>,
     ) -> Self {
         let mut this = Self {
             owner_id: owner_id.into(),
+            treasury_id: treasury_id.into(),
             market: UnorderedMap::new(StorageKey::Market),
             approved_ft_token_ids: UnorderedSet::new(StorageKey::FTTokenIds),
             approved_nft_contract_ids: UnorderedSet::new(StorageKey::NFTContractIds),
@@ -97,17 +102,58 @@ impl MarketplaceContract {
         this
     }
 
-    // Approved contracts
-    pub fn add_approved_nft_contract_id(
-        &mut self,
-        nft_contract_id: ValidAccountId
-    ) {
+    // Changing treasury & ownership
+
+    #[payable]
+    pub fn set_treasury(&mut self, treasury_id: ValidAccountId) {
+        assert_one_yocto();
         assert_eq!(
             env::predecessor_account_id(),
             self.owner_id,
             "Paras: Owner only"
         );
-        self.approved_nft_contract_ids.insert(&nft_contract_id.into());
+        self.treasury_id = treasury_id.to_string();
+    }
+
+    #[payable]
+    pub fn transfer_ownership(&mut self, owner_id: ValidAccountId) {
+        assert_one_yocto();
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "Paras: Owner only"
+        );
+        self.owner_id = owner_id.to_string();
+    }
+
+    // Approved contracts
+    #[payable]
+    pub fn add_approved_nft_contract_ids(&mut self, nft_contract_ids: Vec<ValidAccountId>) {
+        assert_one_yocto();
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "Paras: Owner only"
+        );
+        for nft_contract_id in nft_contract_ids {
+            self.approved_nft_contract_ids.insert(nft_contract_id.as_ref());
+        }
+    }
+
+    #[payable]
+    pub fn add_approved_ft_token_ids(
+        &mut self,
+        ft_token_ids: Vec<ValidAccountId>
+    ) {
+        assert_one_yocto();
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "Paras: Owner only"
+        );
+        for ft_token_id in ft_token_ids {
+            self.approved_ft_token_ids.insert(ft_token_id.as_ref());
+        }
     }
 
     // Buy & Payment
@@ -140,14 +186,14 @@ impl MarketplaceContract {
             "Paras: NEAR support only"
         );
 
-        self.process_purchase(
+        self.internal_process_purchase(
             nft_contract_id.into(),
             token_id,
             buyer_id,
         );
     }
 
-    fn process_purchase(
+    fn internal_process_purchase(
         &mut self,
         nft_contract_id: AccountId,
         token_id: TokenId,
@@ -158,10 +204,13 @@ impl MarketplaceContract {
         let market_data = self.market.remove(&contract_and_token_id).expect("No sale");
 
 
-        ext_contract::nft_transfer(
+
+        ext_contract::nft_transfer_payout(
             buyer_id.clone(),
             token_id,
             market_data.approval_id.into(),
+            market_data.price.into(),
+            10, // max length payout
             &nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
@@ -171,7 +220,7 @@ impl MarketplaceContract {
             market_data,
             &env::current_account_id(),
             NO_DEPOSIT,
-            GAS_FOR_NFT_TRANSFER,
+            GAS_FOR_ROYALTIES,
         ))
     }
 
@@ -181,20 +230,49 @@ impl MarketplaceContract {
         buyer_id: AccountId,
         market_data: MarketData,
     ) -> U128 {
-        let result = promise_result_as_success();
-        if result.is_none() {
+        let payout_option = promise_result_as_success().and_then(|value| {
+            // None means a bad payout from bad NFT contract
+            near_sdk::serde_json::from_slice::<Payout>(&value)
+                .ok()
+                .and_then(|payout| {
+                    let mut remainder = market_data.price;
+                    for &value in payout.values() {
+                        remainder = remainder.checked_sub(value.0)?;
+                    }
+                    if remainder == 0 || remainder == 1 {
+                        Some(payout)
+                    } else {
+                        None
+                    }
+                })
+        });
+        let payout = if let Some(payout_option) = payout_option {
+            payout_option
+        } else {
             if market_data.ft_token_id == "near" {
                 Promise::new(buyer_id).transfer(u128::from(market_data.price));
             }
+            // leave function and return all FTs in ft_resolve_transfer
+            return market_data.price.into();
+        };
+
+        // Payout (transfer to royalties and seller)
+        if market_data.ft_token_id == "near" {
+            // 5% fee for treasury
+            let treasury_fee = (market_data.price * 500) / 10_000;
+
+            for (receiver_id, amount) in payout {
+                if receiver_id == market_data.owner_id {
+                    Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
+                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                } else {
+                    Promise::new(receiver_id).transfer(amount.0);
+                }
+            }
+
             return market_data.price.into();
         } else {
-            if market_data.ft_token_id == "near" {
-                Promise::new(market_data.owner_id).transfer(market_data.price);
-                // refund all FTs (won't be any)
-                return market_data.price.into();
-            } else {
-                U128(0)
-            }
+            U128(0)
         }
     }
 
@@ -236,7 +314,7 @@ impl MarketplaceContract {
         );
     }
 
-    fn add_market_data(
+    fn internal_add_market_data(
         &mut self,
         owner_id: ValidAccountId,
         approval_id: u64,
@@ -285,10 +363,9 @@ impl MarketplaceContract {
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist ");
 
-        assert_eq!(
-            market_data.owner_id,
-            env::predecessor_account_id(),
-            "Paras: Seller only"
+        assert!(
+            [market_data.owner_id.clone(), self.owner_id.clone()].contains(&env::predecessor_account_id()),
+            "Paras: Seller or owner only"
         );
 
         self.market.remove(&contract_and_token_id);
@@ -324,6 +401,14 @@ impl MarketplaceContract {
             ft_token_id: market_data.ft_token_id, // "near" for NEAR token
             price: market_data.price.into(),
         }
+    }
+
+    pub fn supported_ft_token_ids(&self) -> Vec<AccountId> {
+        self.approved_ft_token_ids.to_vec()
+    }
+
+    pub fn supported_nft_contract_ids(&self) -> Vec<AccountId> {
+        self.approved_nft_contract_ids.to_vec()
     }
 }
 
