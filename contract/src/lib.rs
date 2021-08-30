@@ -250,9 +250,24 @@ impl Contract {
             payout_option
         } else {
             if market_data.ft_token_id == "near" {
-                Promise::new(buyer_id).transfer(u128::from(market_data.price));
+                Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
             }
             // leave function and return all FTs in ft_resolve_transfer
+            env::log(
+                json!({
+                    "type": "resolve_purchase_fail",
+                    "params": {
+                        "owner_id": market_data.owner_id,
+                        "nft_contract_id": market_data.nft_contract_id,
+                        "token_id": market_data.token_id,
+                        "ft_token_id": market_data.ft_token_id,
+                        "price": market_data.price,
+                        "buyer_id": buyer_id,
+                    }
+                })
+                .to_string()
+                .as_bytes(),
+            );
             return market_data.price.into();
         };
 
@@ -268,7 +283,23 @@ impl Contract {
                 } else {
                     Promise::new(receiver_id).transfer(amount.0);
                 }
+                
             }
+            env::log(
+                json!({
+                    "type": "resolve_purchase",
+                    "params": {
+                        "owner_id": market_data.owner_id,
+                        "nft_contract_id": market_data.nft_contract_id,
+                        "token_id": market_data.token_id,
+                        "ft_token_id": market_data.ft_token_id,
+                        "price": market_data.price,
+                        "buyer_id": buyer_id,
+                    }
+                })
+                .to_string()
+                .as_bytes(),
+            );
 
             return market_data.price.into();
         } else {
