@@ -61,7 +61,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         }
 
         if self.approved_ft_token_ids.contains(&ft_token_id_res) != true {
-            env::panic("Paras: ft_token_id not supported".as_bytes());
+            env::panic("Paras: ft_token_id not approved".as_bytes());
         }
 
         self.internal_add_market_data(

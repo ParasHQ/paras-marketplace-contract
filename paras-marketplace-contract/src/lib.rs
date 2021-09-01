@@ -70,7 +70,6 @@ pub enum StorageKey {
 
 #[near_bindgen]
 impl Contract {
-
     #[init]
     pub fn new(
         owner_id: ValidAccountId, 
@@ -166,7 +165,7 @@ impl Contract {
         token_id: TokenId,
     ) {
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
-        let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist ");
+        let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist");
         let buyer_id = env::predecessor_account_id();
 
         assert_ne!(
@@ -203,8 +202,6 @@ impl Contract {
 
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
         let market_data = self.market.remove(&contract_and_token_id).expect("No sale");
-
-
 
         ext_contract::nft_transfer_payout(
             buyer_id.clone(),
@@ -441,12 +438,20 @@ impl Contract {
         }
     }
 
-    pub fn supported_ft_token_ids(&self) -> Vec<AccountId> {
+    pub fn approved_ft_token_ids(&self) -> Vec<AccountId> {
         self.approved_ft_token_ids.to_vec()
     }
 
-    pub fn supported_nft_contract_ids(&self) -> Vec<AccountId> {
+    pub fn approved_nft_contract_ids(&self) -> Vec<AccountId> {
         self.approved_nft_contract_ids.to_vec()
+    }
+
+    pub fn get_owner(&self) -> AccountId {
+        self.owner_id.clone()
+    }
+
+    pub fn get_treasury(&self) -> AccountId {
+        self.treasury_id.clone()
     }
 }
 
@@ -457,4 +462,270 @@ trait ExtSelf {
         buyer_id: AccountId,
         market_data: MarketData,
     ) -> Promise;
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use near_sdk::test_utils::{accounts, VMContextBuilder};
+    use near_sdk::MockedBlockchain;
+    use near_sdk::{testing_env};
+    use std::convert::TryFrom;
+    
+    fn get_context(predecessor_account_id: ValidAccountId) -> VMContextBuilder {
+        let mut builder = VMContextBuilder::new();
+        builder
+            .current_account_id(accounts(0))
+            .signer_account_id(predecessor_account_id.clone())
+            .predecessor_account_id(predecessor_account_id);
+        builder
+    }
+
+    fn setup_contract() -> (VMContextBuilder, Contract) {
+        let mut context = VMContextBuilder::new();
+        testing_env!(context.predecessor_account_id(accounts(0)).build());
+        let contract = Contract::new(accounts(0), accounts(1), None, Some(vec![accounts(2)]));
+        (context, contract)
+    }
+
+    #[test]
+    fn test_new() {
+        let mut context = get_context(accounts(0));
+        testing_env!(context.build());
+        let contract = Contract::new(
+            accounts(0),
+            accounts(1),
+            None,
+            Some(vec![accounts(2)])
+        );
+        testing_env!(context.is_view(true).build());
+        assert_eq!(contract.get_owner(), accounts(0).to_string());
+        assert_eq!(contract.get_treasury(), accounts(1).to_string());
+        assert_eq!(contract.approved_ft_token_ids(), vec!["near"]);
+        assert_eq!(contract.approved_nft_contract_ids(), vec![accounts(2).to_string()]);
+    }
+
+    #[test]
+    fn test_set_treasury() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.set_treasury(accounts(5));
+        let new_treasury: AccountId = contract.get_treasury();
+        assert_eq!(new_treasury, accounts(5).to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: Owner only")]
+    fn test_invalid_set_treasury() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(1))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.set_treasury(accounts(5));
+    }
+
+    #[test]
+    fn test_transfer_ownership() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.transfer_ownership(accounts(5));
+        let new_owner: AccountId = contract.get_owner();
+        assert_eq!(new_owner, accounts(5).to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: Owner only")]
+    fn test_invalid_transfer_ownership() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(5))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.transfer_ownership(accounts(5));
+    }
+
+    #[test]
+    fn test_add_approved_ft_token_ids() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.add_approved_ft_token_ids(vec![accounts(5)]);
+        let approved_fts = contract.approved_ft_token_ids();
+        assert_eq!(
+            approved_fts,
+            vec!["near".to_string(), accounts(5).to_string()]
+        );
+    }
+
+    #[test]
+    fn test_add_approved_nft_contract_ids() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.add_approved_nft_contract_ids(vec![accounts(5)]);
+        let approved_nfts = contract.approved_nft_contract_ids();
+        assert_eq!(
+            approved_nfts,
+            vec![accounts(2).to_string(), accounts(5).to_string()]
+        );
+    }
+
+    #[test]
+    fn test_internal_add_market_data() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .build()
+        );
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2).to_string(),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128::from(1 * 10u128.pow(24))
+        );
+
+        let market = contract.get_market_data(accounts(2), "1:1".to_string());
+        assert_eq!(market.owner_id, accounts(3).to_string());
+        assert_eq!(market.approval_id, U64::from(1));
+        assert_eq!(market.ft_token_id, "near".to_string());
+        assert_eq!(market.nft_contract_id, accounts(2).to_string());
+        assert_eq!(market.owner_id, accounts(3).to_string());
+        assert_eq!(market.token_id, "1:1".to_string());
+        assert_eq!(market.price, U128::from(1 * 10u128.pow(24)));
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: Seller only")]
+    fn test_invalid_update_market_data() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .build()
+        );
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2).to_string(),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128::from(1 * 10u128.pow(24))
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.update_market_data(
+            accounts(2),
+            "1:1".to_string(),
+            ValidAccountId::try_from("near").unwrap(),
+            U128::from(2 * 10u128.pow(24)),
+        );
+    }
+
+    #[test]
+    fn test_update_market_data() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .build()
+        );
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2).to_string(),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128::from(1 * 10u128.pow(24))
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(3))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.update_market_data(
+            accounts(2),
+            "1:1".to_string(),
+            ValidAccountId::try_from("near").unwrap(),
+            U128::from(2 * 10u128.pow(24)),
+        );
+
+        let market = contract.get_market_data(accounts(2), "1:1".to_string());
+        assert_eq!(market.price, U128::from(2 * 10u128.pow(24)));
+
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: Token id does not exist")]
+    fn test_delete_market_data() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .build()
+        );
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2).to_string(),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128::from(1 * 10u128.pow(24))
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(3))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.delete_market_data(
+            accounts(2),
+            "1:1".to_string(),
+        );
+
+        contract.get_market_data(accounts(2), "1:1".to_string());
+    }
 }
