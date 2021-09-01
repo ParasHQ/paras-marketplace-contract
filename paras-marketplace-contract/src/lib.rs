@@ -70,7 +70,6 @@ pub enum StorageKey {
 
 #[near_bindgen]
 impl Contract {
-
     #[init]
     pub fn new(
         owner_id: ValidAccountId, 
@@ -448,6 +447,14 @@ impl Contract {
     pub fn supported_nft_contract_ids(&self) -> Vec<AccountId> {
         self.approved_nft_contract_ids.to_vec()
     }
+
+    pub fn get_owner(&self) -> AccountId {
+        self.owner_id.clone()
+    }
+
+    pub fn get_treasury(&self) -> AccountId {
+        self.treasury_id.clone()
+    }
 }
 
 #[ext_contract(ext_self)]
@@ -457,4 +464,43 @@ trait ExtSelf {
         buyer_id: AccountId,
         market_data: MarketData,
     ) -> Promise;
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use near_sdk::test_utils::{accounts, VMContextBuilder};
+    use near_sdk::MockedBlockchain;
+    use near_sdk::{testing_env};
+    
+    fn get_context(predecessor_account_id: ValidAccountId) -> VMContextBuilder {
+        let mut builder = VMContextBuilder::new();
+        builder
+            .current_account_id(accounts(0))
+            .signer_account_id(predecessor_account_id.clone())
+            .predecessor_account_id(predecessor_account_id);
+        builder
+    }
+
+    fn setup_contract() -> (VMContextBuilder, Contract) {
+        let mut context = VMContextBuilder::new();
+        testing_env!(context.predecessor_account_id(accounts(0)).build());
+        let contract = Contract::new(accounts(0), accounts(1), None, vec![accounts(2)]);
+        (context, contract)
+    }
+
+    #[test]
+    fn test_new() {
+        let mut context = get_context(accounts(0));
+        testing_env!(context.build());
+        let contract = Contract::new(
+            accounts(0),
+            accounts(1),
+            None,
+            vec![accounts(2)]
+        );
+        testing_env!(context.is_view(true).build());
+        assert_eq!(contract.get_owner(), accounts(0).to_string());
+        assert_eq!(contract.get_treasury(), accounts(1).to_string());
+    }
 }

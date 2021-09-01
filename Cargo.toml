@@ -1,0 +1,24 @@
+[package]
+name = "paras-marketplace-contract-wrapper"
+version = "0.1.0"
+authors = ["Irfianto <irfi@paras.id>"]
+edition = "2018"
+
+[dev-dependencies]
+near-sdk = "3.1.0"
+near-contract-standards = "3.2.0"
+near-sdk-sim = "=3.1.0"
+paras-marketplace-contract = { path = "./paras-marketplace-contract" }
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true
+
+[workspace]
+members = [
+    "paras-marketplace-contract",
+]
