@@ -11,13 +11,13 @@ near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
 }
 
 pub const NFT_ID: &str = "nft";
-pub const MARKETPLACE_ID: &str = "marketplace";
 
 pub const STORAGE_MINT_ESTIMATE: u128 = 11280000000000000000000;
 pub const STORAGE_CREATE_SERIES_ESTIMATE: u128 = 8540000000000000000000;
 
 // After calculation
-pub const STORAGE_ADD_MARKET_DATA: u128 = 4020000000000000000000;
+pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
+pub const STORAGE_APPROVE: u128 = 760000000000000000000;
 
 pub fn create_nft_and_mint_one(
     nft: &UserAccount, 
@@ -158,7 +158,7 @@ pub fn init() -> (
 
     let marketplace_contract = deploy!(
         contract: MarketplaceContract,
-        contract_id: MARKETPLACE_ID,
+        contract_id: &"mk".repeat(32),
         bytes: &MARKETPLACE_WASM_BYTES,
         signer_account: root,
         init_method: new(

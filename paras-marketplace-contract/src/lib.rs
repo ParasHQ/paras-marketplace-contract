@@ -1,17 +1,15 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{UnorderedMap, UnorderedSet};
+use near_sdk::collections::{UnorderedMap, UnorderedSet, LookupMap};
 use near_sdk::json_types::{U128, U64, ValidAccountId};
 use near_sdk::{
-    env, near_bindgen, AccountId, BorshStorageKey,
+    env, near_bindgen, AccountId, BorshStorageKey, CryptoHash,
     PanicOnDefault, serde_json::json, assert_one_yocto, ext_contract, Gas, Balance, Promise
 };
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::promise_result_as_success;
 use std::collections::HashMap;
 
-
 use crate::external::*;
-
 
 mod external;
 mod nft_callbacks;
@@ -20,6 +18,9 @@ const GAS_FOR_NFT_TRANSFER: Gas = 15_000_000_000_000;
 const GAS_FOR_ROYALTIES: Gas = 115_000_000_000_000;
 const NO_DEPOSIT: Balance = 0;
 const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05 
+
+pub const STORAGE_ADD_MARKET_DATA: u128 = 4020000000000000000000;
+
 
 near_sdk::setup_alloc!();
 
@@ -59,13 +60,18 @@ pub struct Contract {
     pub market: UnorderedMap<ContractAndTokenId, MarketData>,
     pub approved_ft_token_ids: UnorderedSet<AccountId>,
     pub approved_nft_contract_ids: UnorderedSet<AccountId>,
+    pub storage_deposits: LookupMap<AccountId, Balance>,
+    pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
 pub enum StorageKey {
     Market,
     FTTokenIds,
-    NFTContractIds
+    NFTContractIds,
+    StorageDeposits,
+    ByOwnerId,
+    ByOwnerIdInner { account_id_hash: CryptoHash },
 }
 
 #[near_bindgen]
@@ -83,6 +89,8 @@ impl Contract {
             market: UnorderedMap::new(StorageKey::Market),
             approved_ft_token_ids: UnorderedSet::new(StorageKey::FTTokenIds),
             approved_nft_contract_ids: UnorderedSet::new(StorageKey::NFTContractIds),
+            storage_deposits: LookupMap::new(StorageKey::StorageDeposits),
+            by_owner_id: LookupMap::new(StorageKey::ByOwnerId),
         };
 
         this.approved_ft_token_ids.insert(&"near".to_string());
@@ -200,8 +208,7 @@ impl Contract {
         buyer_id: AccountId,
     ) -> Promise {
 
-        let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
-        let market_data = self.market.remove(&contract_and_token_id).expect("No sale");
+        let market_data = self.internal_delete_market_data(&nft_contract_id, &token_id); 
 
         ext_contract::nft_transfer_payout(
             buyer_id.clone(),
@@ -371,6 +378,20 @@ impl Contract {
             },
         );
 
+        let mut token_ids = self.by_owner_id.get(owner_id.as_ref()).unwrap_or_else(|| {
+            UnorderedSet::new(
+                StorageKey::ByOwnerIdInner {
+                    account_id_hash: hash_account_id(owner_id.as_ref()),
+                }
+                .try_to_vec()
+                .unwrap()
+            )
+        });
+
+        token_ids.insert(&contract_and_token_id);
+
+        self.by_owner_id.insert(&owner_id.to_string(), &token_ids);
+
         env::log(
             json!({
                 "type": "add_market_data",
@@ -386,6 +407,25 @@ impl Contract {
             .to_string()
             .as_bytes(),
         );
+    }
+    
+    fn internal_delete_market_data(
+        &mut self,
+        nft_contract_id: &AccountId,
+        token_id: &TokenId
+    ) -> MarketData {
+        let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
+        let market_data = self.market.remove(&contract_and_token_id).expect("No sale");
+
+        let mut by_owner_id = self.by_owner_id.get(&market_data.owner_id).expect("No sale by owner_id");
+        by_owner_id.remove(&contract_and_token_id);
+        if by_owner_id.is_empty() {
+            self.by_owner_id.remove(&market_data.owner_id);
+        } else {
+            self.by_owner_id.insert(&market_data.owner_id, &by_owner_id);
+        }
+
+        market_data
     }
 
     #[payable]
@@ -403,7 +443,7 @@ impl Contract {
             "Paras: Seller or owner only"
         );
 
-        self.market.remove(&contract_and_token_id);
+        self.internal_delete_market_data(nft_contract_id.as_ref(), &token_id);
         // what about the approval_id?
         env::log(
             json!({
@@ -418,7 +458,53 @@ impl Contract {
             .as_bytes(),
         );
     }
+
+    // Storage
+
+    #[payable]
+    pub fn storage_deposit(&mut self, account_id: Option<ValidAccountId>) {
+        let storage_account_id = account_id
+            .map(|a| a.into())
+            .unwrap_or_else(env::predecessor_account_id);
+        let deposit = env::attached_deposit();
+        assert!(
+            deposit >= STORAGE_ADD_MARKET_DATA,
+            "Requires minimum deposit of {}",
+            STORAGE_ADD_MARKET_DATA
+        );
+
+        let mut balance: u128 = self.storage_deposits.get(&storage_account_id).unwrap_or(0);
+        balance += deposit;
+        self.storage_deposits.insert(&storage_account_id, &balance);
+    }
+
+    #[payable]
+    pub fn storage_withdraw(&mut self) {
+        assert_one_yocto();
+        let owner_id = env::predecessor_account_id();
+        let mut amount = self.storage_deposits.remove(&owner_id).unwrap_or(0);
+        let market_data_owner = self.by_owner_id.get(&owner_id);
+        let len = market_data_owner.map(|s| s.len()).unwrap_or_default();
+        let diff = u128::from(len) * STORAGE_ADD_MARKET_DATA;
+        amount -= diff;
+        if amount > 0 {
+            Promise::new(owner_id.clone()).transfer(amount);
+        }
+        if diff > 0 {
+            self.storage_deposits.insert(&owner_id, &diff);
+        }
+    }
+
+    pub fn storage_minimum_balance(&self) -> U128 {
+        U128(STORAGE_ADD_MARKET_DATA)
+    }
+
+    pub fn storage_balance_of(&self, account_id: ValidAccountId) -> U128 {
+        U128(self.storage_deposits.get(account_id.as_ref()).unwrap_or(0))
+    }
     
+    
+
     // View
 
     pub fn get_market_data(
@@ -453,8 +539,22 @@ impl Contract {
     pub fn get_treasury(&self) -> AccountId {
         self.treasury_id.clone()
     }
+
+    pub fn get_supply_by_owner_id(&self, account_id: AccountId) -> U64 {
+        let by_owner_id = self.by_owner_id.get(&account_id);
+        if let Some(by_owner_id) = by_owner_id {
+            U64(by_owner_id.len())
+        } else {
+            U64(0)
+        }
+    }
 }
 
+pub fn hash_account_id(account_id: &AccountId) -> CryptoHash {
+        let mut hash = CryptoHash::default();
+        hash.copy_from_slice(&env::sha256(account_id.as_bytes()));
+        hash
+}
 #[ext_contract(ext_self)]
 trait ExtSelf {
     fn resolve_purchase(
@@ -727,5 +827,32 @@ mod tests {
         );
 
         contract.get_market_data(accounts(2), "1:1".to_string());
+    }
+
+    #[test]
+    fn test_storage_deposit() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(STORAGE_ADD_MARKET_DATA)
+            .build()
+        );
+
+        contract.storage_deposit(None);
+
+        let storage_balance = contract.storage_balance_of(accounts(0)).0;
+        assert_eq!(STORAGE_ADD_MARKET_DATA, storage_balance);
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.storage_withdraw();
+
+        let storage_balance = contract.storage_balance_of(accounts(0)).0;
+        assert_eq!(0, storage_balance);
     }
 }

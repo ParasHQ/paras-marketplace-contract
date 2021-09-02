@@ -2,7 +2,7 @@ use near_sdk::AccountId;
 use near_sdk::serde_json::json;
 use near_sdk_sim::{view, call, to_yocto, DEFAULT_GAS};
 
-use crate::utils::{init, create_nft_and_mint_one, STORAGE_ADD_MARKET_DATA};
+use crate::utils::{init, create_nft_and_mint_one, STORAGE_ADD_MARKET_DATA, STORAGE_APPROVE};
 mod utils;
 
 #[test]
@@ -26,6 +26,14 @@ fn test_add_market_data() {
     create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
     let msg = &json!({"price": to_yocto("3").to_string(), "ft_token_id": "near"}).to_string();
 
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    ).assert_success();
+
     let initial_storage_usage = marketplace.account().unwrap().storage_usage;
 
     let outcome = chandra.call(
@@ -37,13 +45,13 @@ fn test_add_market_data() {
             "msg": msg,
         }).to_string().into_bytes(),
         DEFAULT_GAS,
-        STORAGE_ADD_MARKET_DATA,
+        STORAGE_APPROVE,
     );
 
     outcome.assert_success();
     let storage_price_for_add_market = 
         (marketplace.account().unwrap().storage_usage - initial_storage_usage) as u128 * 10u128.pow(19);
-    println!("{:?}", outcome.promise_results());
+    //println!("{:?}", outcome.promise_results());
     println!("[ADD MARKET DATA] Gas burnt: {} TeraGas", outcome.gas_burnt() as f64 / 1e12);
     println!("[ADD MARKET DATA] Storage price : {} yoctoNEAR", storage_price_for_add_market);
 }
@@ -57,6 +65,14 @@ fn test_buy() {
     let msg = &json!({"price": to_yocto("3").to_string(), "ft_token_id": "near"}).to_string();
 
     chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    ).assert_success();
+
+    chandra.call(
         nft.account_id(),
         "nft_approve",
         &json!({
@@ -65,7 +81,7 @@ fn test_buy() {
             "msg": msg,
         }).to_string().into_bytes(),
         DEFAULT_GAS,
-        STORAGE_ADD_MARKET_DATA,
+        STORAGE_APPROVE,
     ).assert_success();
 
     //buyer
@@ -90,7 +106,7 @@ fn test_buy() {
     let restored_storage_price_for_buy = 
         initial_storage_usage - marketplace.account().unwrap().storage_usage;
 
-    println!("{:?}", outcome.promise_results());
+    //println!("{:?}", outcome.promise_results());
     println!("[BUY] Gas burnt: {} TeraGas", outcome.gas_burnt() as f64 / 1e12);
     println!("[BUY] Restored storage price : {} Bytes", restored_storage_price_for_buy);
 }

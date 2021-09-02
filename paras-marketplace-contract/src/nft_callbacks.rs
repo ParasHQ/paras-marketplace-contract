@@ -4,7 +4,7 @@ use crate::*;
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-pub struct MartketArgs {
+pub struct MarketArgs {
     pub price: U128,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ft_token_id: Option<AccountId>,
@@ -49,7 +49,19 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             "Paras: nft_contract_id is not approved"
         );
 
-        let MartketArgs { price, ft_token_id } =
+        let storage_amount = self.storage_minimum_balance().0;
+        let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
+        let signer_storage_required = 
+            (self.get_supply_by_owner_id(signer_id).0 + 1) as u128 * storage_amount;
+
+        assert!(
+            owner_paid_storage >= signer_storage_required,
+            "Insufficient storage paid: {}, for {} sales at {} rate of per sale",
+            owner_paid_storage, signer_storage_required / storage_amount, storage_amount,
+        );
+
+
+        let MarketArgs { price, ft_token_id } =
             near_sdk::serde_json::from_str(&msg).expect("Not valid MarketArgs");
 
         
