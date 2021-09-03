@@ -15,12 +15,12 @@ mod external;
 mod nft_callbacks;
 
 const GAS_FOR_NFT_TRANSFER: Gas = 15_000_000_000_000;
-const GAS_FOR_ROYALTIES: Gas = 115_000_000_000_000;
+const BASE_GAS: Gas = 5_000_000_000_000;
+const GAS_FOR_ROYALTIES: Gas = BASE_GAS * 10;
 const NO_DEPOSIT: Balance = 0;
 const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05 
 
-pub const STORAGE_ADD_MARKET_DATA: u128 = 4020000000000000000000;
-
+pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
 
 near_sdk::setup_alloc!();
 
