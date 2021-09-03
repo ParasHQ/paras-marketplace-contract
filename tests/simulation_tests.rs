@@ -1,8 +1,12 @@
 use near_sdk::AccountId;
 use near_sdk::serde_json::json;
-use near_sdk_sim::{view, call, to_yocto, DEFAULT_GAS};
+use near_sdk_sim::{view, to_yocto, DEFAULT_GAS};
 
-use crate::utils::{init, create_nft_and_mint_one, STORAGE_ADD_MARKET_DATA, STORAGE_APPROVE};
+use crate::utils::{
+    init, create_nft_and_mint_one, STORAGE_ADD_MARKET_DATA, STORAGE_APPROVE,
+    GAS_BUY,
+};
+
 mod utils;
 
 #[test]
@@ -58,7 +62,7 @@ fn test_add_market_data() {
 
 #[test]
 fn test_buy() {
-    let (marketplace, nft, treasury, alice, bob, chandra, root) = init();
+    let (marketplace, nft, _, alice, bob, chandra, root) = init();
 
 
     create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
@@ -99,14 +103,20 @@ fn test_buy() {
             "nft_contract_id": nft.account_id(),
             "token_id": format!("{}:{}", u128::MAX.to_string(), "1"),
         }).to_string().into_bytes(),
-        DEFAULT_GAS,
+        GAS_BUY,
         to_yocto("3"),
     );
 
     let restored_storage_price_for_buy = 
         initial_storage_usage - marketplace.account().unwrap().storage_usage;
 
-    //println!("{:?}", outcome.promise_results());
+    outcome.assert_success();
+    println!(
+        "tokens_burnt: {}Ⓝ",
+        (outcome.tokens_burnt()) as f64 / 1e24
+    );
     println!("[BUY] Gas burnt: {} TeraGas", outcome.gas_burnt() as f64 / 1e12);
     println!("[BUY] Restored storage price : {} Bytes", restored_storage_price_for_buy);
+    let expected_gas_ceiling = 50 * u64::pow(10, 12);
+    assert!(outcome.gas_burnt() < expected_gas_ceiling);
 }
