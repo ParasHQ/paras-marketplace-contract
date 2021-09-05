@@ -213,9 +213,9 @@ impl Contract {
         ext_contract::nft_transfer_payout(
             buyer_id.clone(),
             token_id,
-            U64::from(market_data.approval_id),
-            U128::from(market_data.price),
-            10u32, // max length payout
+            Some(market_data.approval_id),
+            Some(U128::from(market_data.price)),
+            Some(10u32), // max length payout
             &nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
