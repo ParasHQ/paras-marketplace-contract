@@ -29,7 +29,6 @@ pub fn create_nft_and_mint_one(
         nft.account_id(),
         "nft_create_series",
         &json!({
-            "token_series_id": u128::MAX.to_string(),
             "token_metadata": {
                 "title": "A".repeat(200),
                 "reference": "A".repeat(59),
@@ -59,7 +58,7 @@ pub fn create_nft_and_mint_one(
         nft.account_id(),
         "nft_buy",
         &json!({
-            "token_series_id": u128::MAX.to_string(),
+            "token_series_id": "1",
             "receiver_id": receiver_id.valid_account_id(),
         }).to_string().into_bytes(),
         DEFAULT_GAS,

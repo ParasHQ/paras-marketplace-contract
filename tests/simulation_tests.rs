@@ -44,7 +44,7 @@ fn test_add_market_data() {
         nft.account_id(),
         "nft_approve",
         &json!({
-            "token_id": format!("{}:{}", u128::MAX.to_string(), "1"),
+            "token_id": format!("{}:{}", "1", "1"),
             "account_id": marketplace.valid_account_id(),
             "msg": msg,
         }).to_string().into_bytes(),
@@ -80,7 +80,7 @@ fn test_buy() {
         nft.account_id(),
         "nft_approve",
         &json!({
-            "token_id": format!("{}:{}", u128::MAX.to_string(), "1"),
+            "token_id": format!("{}:{}", "1", "1"),
             "account_id": marketplace.valid_account_id(),
             "msg": msg,
         }).to_string().into_bytes(),
@@ -101,7 +101,7 @@ fn test_buy() {
         "buy",
         &json!({
             "nft_contract_id": nft.account_id(),
-            "token_id": format!("{}:{}", u128::MAX.to_string(), "1"),
+            "token_id": format!("{}:{}", "1", "1"),
         }).to_string().into_bytes(),
         GAS_BUY,
         to_yocto("3"),
