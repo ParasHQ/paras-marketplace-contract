@@ -26,7 +26,14 @@ near_sdk::setup_alloc!();
 
 pub type Payout = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
+pub type ContractAccountIdTokenId = String;
 pub type TokenId = String;
+pub enum MarketType {
+    Sale,
+    AcceptOffer,
+    Auction,
+    Trade,
+}
 
 const DELIMETER: &str = "||";
 
@@ -35,6 +42,16 @@ const DELIMETER: &str = "||";
 pub struct MarketData {
     pub owner_id: AccountId,
     pub approval_id: u64,
+    pub nft_contract_id: String,
+    pub token_id: TokenId,
+    pub ft_token_id: AccountId, // "near" for NEAR token
+    pub price: u128,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct OfferData {
+    pub account_id: AccountId,
     pub nft_contract_id: String,
     pub token_id: TokenId,
     pub ft_token_id: AccountId, // "near" for NEAR token
@@ -62,6 +79,7 @@ pub struct Contract {
     pub approved_nft_contract_ids: UnorderedSet<AccountId>,
     pub storage_deposits: LookupMap<AccountId, Balance>,
     pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
+    pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -72,6 +90,7 @@ pub enum StorageKey {
     StorageDeposits,
     ByOwnerId,
     ByOwnerIdInner { account_id_hash: CryptoHash },
+    Offers,
 }
 
 #[near_bindgen]
@@ -91,6 +110,7 @@ impl Contract {
             approved_nft_contract_ids: UnorderedSet::new(StorageKey::NFTContractIds),
             storage_deposits: LookupMap::new(StorageKey::StorageDeposits),
             by_owner_id: LookupMap::new(StorageKey::ByOwnerId),
+            offers: UnorderedMap::new(StorageKey::Offers),
         };
 
         this.approved_ft_token_ids.insert(&"near".to_string());
@@ -310,6 +330,107 @@ impl Contract {
         } else {
             U128(0)
         }
+    }
+
+    // Offer
+
+    #[payable]
+    pub fn offer(
+        &mut self,
+        nft_contract_id: ValidAccountId,
+        token_id: TokenId,
+        ft_token_id: ValidAccountId,
+        price: U128
+    ) {
+        assert_eq!(
+            env::attached_deposit(),
+            price,
+            "Attached deposit != price"
+        );
+
+        assert_eq!(
+            ft_token_id,
+            "near",
+            "Only NEAR is supported with offer function call"
+        );
+
+        let account_id = env::predecessor_account_id();
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+
+        self.offers.insert(
+            &contract_account_id_token_id,
+            &OfferData {
+                account_id: account_id.clone().into(),
+                nft_contract_id: nft_contract_id.clone().into(),
+                token_id: token_id.clone(),
+                ft_token_id: ft_token_id.clone().into(),
+                price: price.into(),
+            },
+        );
+
+        // TODO: storage
+    }
+
+    pub fn delete_offer(
+        &mut self,
+        nft_contract_id: ValidAccountId,
+        token_id: TokenId,
+    ) {
+        let account_id = env::predecessor_account_id();
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+
+        self.offers.remove(&contract_account_id_token_id);
+    }
+
+    pub fn get_offer(
+        &mut self,
+        nft_contract_id: ValidAccountId,
+        account_id: ValidAccountId,
+        token_id: TokenId
+    ) -> OfferData {
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+        self.offers.get(&contract_account_id_token_id).expect("Offer does not exist")
+    }
+
+    fn internal_accept_offer(
+        &mut self,
+        nft_contract_id: AccountId,
+        account_id: AccountId,
+        token_id: TokenId,
+        seller_id: AccountId,
+        approval_id: u64,
+    ) {
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+        let offer_data = self.offers.remove(&contract_account_id_token_id);
+
+        // transfer nft to account_id
+
+        ext_contract::nft_transfer(
+            account_id.into(),
+            token_id,
+            approval_id,
+            &nft_contract_id,
+            1,
+            GAS_FOR_NFT_TRANSFER,
+        ).then(
+            ext_self::resolve_offer(
+                seller_id.into(),
+                offer_data,
+                &env::current_account_id(),
+                NO_DEPOSIT,
+                GAS_FOR_ROYALTIES,
+            )
+        );
+
+    }
+
+    #[private]
+    fn resolve_offer(
+        buyer_id: ValidAccountId,
+        offer_data: OfferData
+    ) {
+        let promise_result = promise_result_as_success();
+
     }
 
     // Market Data functions
@@ -555,12 +676,19 @@ pub fn hash_account_id(account_id: &AccountId) -> CryptoHash {
         hash.copy_from_slice(&env::sha256(account_id.as_bytes()));
         hash
 }
+
 #[ext_contract(ext_self)]
 trait ExtSelf {
     fn resolve_purchase(
         &mut self,
         buyer_id: AccountId,
         market_data: MarketData,
+    ) -> Promise;
+
+    fn resolve_offer(
+        &mut self,
+        buyer_id: AccountId,
+        offer_data: OfferData
     ) -> Promise;
 }
 

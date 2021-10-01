@@ -5,9 +5,13 @@ use crate::*;
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct MarketArgs {
-    pub price: U128,
+    pub market_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price: Option<U128>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ft_token_id: Option<AccountId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
 }
 
 trait NonFungibleTokenApprovalsReceiver {
@@ -49,46 +53,53 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             "Paras: nft_contract_id is not approved"
         );
 
-        let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
-        let current_market_data = self.market.get(&contract_and_token_id);
-        if current_market_data.is_some() {
-            self.internal_delete_market_data(&nft_contract_id, &token_id);
-        }
-
-        let storage_amount = self.storage_minimum_balance().0;
-        let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
-        let signer_storage_required = 
-            (self.get_supply_by_owner_id(signer_id).0 + 1) as u128 * storage_amount;
-
-        assert!(
-            owner_paid_storage >= signer_storage_required,
-            "Insufficient storage paid: {}, for {} sales at {} rate of per sale",
-            owner_paid_storage, signer_storage_required / storage_amount, storage_amount,
-        );
-
-
-        let MarketArgs { price, ft_token_id } =
+        let MarketArgs { market_type, price, ft_token_id , account_id} =
             near_sdk::serde_json::from_str(&msg).expect("Not valid MarketArgs");
 
-        
-        let ft_token_id_res: AccountId;
-        if let Some(ft_contract_id) = ft_token_id {
-            ft_token_id_res = ft_contract_id;
-        } else {
-            ft_token_id_res = String::from("near");
-        }
+        if market_type == "sale" {
 
-        if self.approved_ft_token_ids.contains(&ft_token_id_res) != true {
-            env::panic("Paras: ft_token_id not approved".as_bytes());
-        }
+            assert!(price.is_some(), "Paras: price not specified");
 
-        self.internal_add_market_data(
-            owner_id, 
-            approval_id, 
-            nft_contract_id, 
-            token_id, 
-            ft_token_id_res, 
-            price
-        );
+            let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+            let current_market_data = self.market.get(&contract_and_token_id);
+            if current_market_data.is_some() {
+                self.internal_delete_market_data(&nft_contract_id, &token_id);
+            }
+    
+            let storage_amount = self.storage_minimum_balance().0;
+            let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
+            let signer_storage_required = 
+                (self.get_supply_by_owner_id(signer_id).0 + 1) as u128 * storage_amount;
+    
+            assert!(
+                owner_paid_storage >= signer_storage_required,
+                "Insufficient storage paid: {}, for {} sales at {} rate of per sale",
+                owner_paid_storage, signer_storage_required / storage_amount, storage_amount,
+            );
+    
+            let ft_token_id_res: AccountId;
+            if let Some(ft_contract_id) = ft_token_id {
+                ft_token_id_res = ft_contract_id;
+            } else {
+                ft_token_id_res = String::from("near");
+            }
+    
+            if self.approved_ft_token_ids.contains(&ft_token_id_res) != true {
+                env::panic("Paras: ft_token_id not approved".as_bytes());
+            }
+    
+            self.internal_add_market_data(
+                owner_id, 
+                approval_id, 
+                nft_contract_id, 
+                token_id, 
+                ft_token_id_res, 
+                price.unwrap()
+            );
+        }
+        else if market_type == "accept_offer" {
+            assert!(account_id.is_some(), "Paras: Account id is not specified");
+
+        }
     }
 }
