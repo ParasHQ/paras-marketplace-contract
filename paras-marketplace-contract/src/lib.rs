@@ -504,7 +504,13 @@ impl Contract {
         token_id: TokenId,
     ) {
         let account_id = env::predecessor_account_id();
-        let offer_data = self.internal_delete_offer(
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+
+        let offer_data= self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
+
+        assert_eq!(offer_data.buyer_id, account_id, "Paras: Caller not offer's buyer");
+
+        self.internal_delete_offer(
             nft_contract_id.clone().into(),
             account_id.clone(),
             token_id.clone()
@@ -558,8 +564,6 @@ impl Contract {
             account_id.clone(),
             token_id.clone()
         ).expect("Paras: Offer does not exist");
-
-
 
         // transfer nft to account_id
         ext_contract::nft_transfer_payout(
