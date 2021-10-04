@@ -527,7 +527,7 @@ impl Contract {
     }
 
     pub fn get_offer(
-        &mut self,
+        &self,
         nft_contract_id: ValidAccountId,
         account_id: ValidAccountId,
         token_id: TokenId
