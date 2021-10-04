@@ -103,6 +103,7 @@ pub struct Contract {
     pub storage_deposits: LookupMap<AccountId, Balance>,
     pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
     pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
+    pub paras_nft_contract: AccountId,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -124,6 +125,7 @@ impl Contract {
         treasury_id: ValidAccountId,
         approved_ft_token_ids: Option<Vec<ValidAccountId>>,
         approved_nft_contract_ids: Option<Vec<ValidAccountId>>,
+        paras_nft_contract: ValidAccountId,
     ) -> Self {
         let mut this = Self {
             owner_id: owner_id.into(),
@@ -134,6 +136,7 @@ impl Contract {
             storage_deposits: LookupMap::new(StorageKey::StorageDeposits),
             by_owner_id: LookupMap::new(StorageKey::ByOwnerId),
             offers: UnorderedMap::new(StorageKey::Offers),
+            paras_nft_contract: paras_nft_contract.into(),
         };
 
         this.approved_ft_token_ids.insert(&"near".to_string());
@@ -154,7 +157,7 @@ impl Contract {
     }
 
     #[init(ignore_state)]
-    pub fn migrate() -> Self {
+    pub fn migrate(paras_nft_contract: ValidAccountId) -> Self {
         let prev: ContractV1 = env::state_read().expect("ERR_NOT_INITIALIZED");
         assert_eq!(
             env::predecessor_account_id(),
@@ -171,6 +174,7 @@ impl Contract {
             storage_deposits: prev.storage_deposits,
             by_owner_id: prev.by_owner_id,
             offers: UnorderedMap::new(StorageKey::Offers),
+            paras_nft_contract: paras_nft_contract.into(),
         }
     }
 
@@ -380,21 +384,28 @@ impl Contract {
 
     fn internal_add_offer(
         &mut self,
-        nft_contract_id: ValidAccountId,
-        token_id: TokenId,
+        nft_contract_id: AccountId,
+        token_id: Option<TokenId>,
+        token_series_id: Option<TokenId>,
         ft_token_id: AccountId,
         price: U128,
         account_id: AccountId,
     ) {
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+        let token = if token_id.is_some() {
+            token_id.as_ref().unwrap().to_string()
+        } else {
+            token_series_id.as_ref().unwrap().to_string()
+        };
+
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token);
         self.offers.insert(
             &contract_account_id_token_id,
             &OfferData {
                 buyer_id: account_id.clone().into(),
-                nft_contract_id: nft_contract_id.clone().into(),
-                token_id: Some(token_id.clone()),
-                token_series_id: None,
-                ft_token_id: ft_token_id.clone().into(),
+                nft_contract_id: nft_contract_id.into(),
+                token_id: token_id,
+                token_series_id: token_series_id,
+                ft_token_id: ft_token_id.into(),
                 price: price.into(),
             },
         );
@@ -410,31 +421,24 @@ impl Contract {
         });
         token_ids.insert(&contract_account_id_token_id);
         self.by_owner_id.insert(&account_id, &token_ids);
-
-        env::log(
-            json!({
-                "type": "add_offer",
-                "params": {
-                    "buyer_id": account_id,
-                    "nft_contract_id": nft_contract_id,
-                    "token_id": token_id,
-                    "ft_token_id": ft_token_id,
-                    "price": price,
-                }
-            })
-                .to_string()
-                .as_bytes(),
-        );
     }
 
     #[payable]
     pub fn add_offer(
         &mut self,
         nft_contract_id: ValidAccountId,
-        token_id: TokenId,
+        token_id: Option<TokenId>,
+        token_series_id: Option<String>,
         ft_token_id: AccountId,
         price: U128
     ) {
+        let token = if token_id.is_some() {
+            token_id.as_ref().unwrap().to_string()
+        } else {
+            assert_eq!(nft_contract_id.to_string(), self.paras_nft_contract, "Paras: offer series for Paras NFT only");
+            token_series_id.as_ref().unwrap().to_string()
+        };
+
         assert_eq!(
             env::attached_deposit(),
             price.0,
@@ -448,11 +452,15 @@ impl Contract {
         );
 
         let account_id = env::predecessor_account_id();
-        self.internal_delete_offer(
+        let offer_data = self.internal_delete_offer(
             nft_contract_id.clone().into(),
             account_id.clone(),
-            token_id.clone()
+            token.clone()
         );
+
+        if offer_data.is_some() {
+            Promise::new(account_id.clone()).transfer(offer_data.unwrap().price);
+        }
 
         let storage_amount = self.storage_minimum_balance().0;
         let owner_paid_storage = self.storage_deposits.get(&account_id).unwrap_or(0);
@@ -466,11 +474,28 @@ impl Contract {
         );
 
         self.internal_add_offer(
-            nft_contract_id,
-            token_id,
-            ft_token_id,
+            nft_contract_id.clone().into(),
+            token_id.clone(),
+            token_series_id.clone(),
+            ft_token_id.clone(),
             price,
-            account_id
+            account_id.clone()
+        );
+
+        env::log(
+            json!({
+                "type": "add_offer",
+                "params": {
+                    "buyer_id": account_id,
+                    "nft_contract_id": nft_contract_id,
+                    "token_id": token_id,
+                    "token_series_id": token_series_id,
+                    "ft_token_id": ft_token_id,
+                    "price": price,
+                }
+            })
+            .to_string()
+            .as_bytes(),
         );
     }
 
@@ -501,19 +526,32 @@ impl Contract {
     pub fn delete_offer(
         &mut self,
         nft_contract_id: ValidAccountId,
-        token_id: TokenId,
+        token_id: Option<TokenId>,
+        token_series_id: Option<String>
     ) {
+        let token = if token_id.is_some() {
+            token_id.as_ref().unwrap().to_string()
+        } else {
+            token_series_id.as_ref().unwrap().to_string()
+        };
+
         let account_id = env::predecessor_account_id();
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token);
 
         let offer_data= self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
+
+        if token_id.is_some() {
+            assert_eq!(offer_data.token_id.unwrap(), token)
+        } else {
+            assert_eq!(offer_data.token_series_id.unwrap(), token)
+        }
 
         assert_eq!(offer_data.buyer_id, account_id, "Paras: Caller not offer's buyer");
 
         self.internal_delete_offer(
             nft_contract_id.clone().into(),
             account_id.clone(),
-            token_id.clone()
+            token.clone(),
         ).expect("Paras: Offer not found");
 
         Promise::new(offer_data.buyer_id).transfer(offer_data.price);
@@ -525,10 +563,11 @@ impl Contract {
                     "nft_contract_id": nft_contract_id,
                     "account_id": account_id,
                     "token_id": token_id,
+                    "token_series_id": token_series_id,
                 }
             })
-                .to_string()
-                .as_bytes(),
+            .to_string()
+            .as_bytes(),
         );
     }
 
@@ -536,10 +575,24 @@ impl Contract {
         &self,
         nft_contract_id: ValidAccountId,
         account_id: ValidAccountId,
-        token_id: TokenId
+        token_id: Option<TokenId>,
+        token_series_id: Option<String>
     ) -> OfferDataJson {
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+        let token = if token_id.is_some() {
+            token_id.as_ref().unwrap()
+        } else {
+            token_series_id.as_ref().unwrap()
+        };
+
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token);
         let offer_data = self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
+
+        if token_id.is_some() {
+            assert_eq!(offer_data.token_id.as_ref().unwrap(), token);
+        } else {
+            assert_eq!(offer_data.token_series_id.as_ref().unwrap(), token);
+        }
+
 
         OfferDataJson {
             buyer_id: offer_data.buyer_id,
@@ -584,6 +637,46 @@ impl Contract {
             NO_DEPOSIT,
             GAS_FOR_ROYALTIES,
         ))
+    }
+
+    fn internal_accept_offer_series(
+        &mut self,
+        nft_contract_id: AccountId,
+        account_id: AccountId,
+        token_id: TokenId,
+        seller_id: AccountId,
+        approval_id: u64,
+    ) -> Promise {
+        // Token delimiter : is specific for Paras NFT
+
+        let mut token_id_iter = token_id.split(":");
+        let token_series_id: String = token_id_iter.next().unwrap().parse().unwrap();
+
+        let offer_data = self.internal_delete_offer(
+            nft_contract_id.clone().into(),
+            account_id.clone(),
+            token_series_id.clone()
+        ).expect("Paras: Offer does not exist");
+
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+
+        ext_contract::nft_transfer_payout(
+            offer_data.buyer_id.clone(),
+            token_id,
+            Some(approval_id),
+            Some(U128::from(offer_data.price)),
+            Some(10u32), // max length payout
+            &nft_contract_id,
+            1,
+            GAS_FOR_NFT_TRANSFER,
+        )
+            .then(ext_self::resolve_offer(
+                seller_id,
+                offer_data,
+                &env::current_account_id(),
+                NO_DEPOSIT,
+                GAS_FOR_ROYALTIES,
+            ))
     }
 
     #[private]
@@ -951,7 +1044,13 @@ mod tests {
     fn setup_contract() -> (VMContextBuilder, Contract) {
         let mut context = VMContextBuilder::new();
         testing_env!(context.predecessor_account_id(accounts(0)).build());
-        let contract = Contract::new(accounts(0), accounts(1), None, Some(vec![accounts(2)]));
+        let contract = Contract::new(
+            accounts(0),
+            accounts(1),
+            None,
+            Some(vec![accounts(2)]),
+            accounts(2)
+        );
         (context, contract)
     }
 
@@ -963,7 +1062,8 @@ mod tests {
             accounts(0),
             accounts(1),
             None,
-            Some(vec![accounts(2)])
+            Some(vec![accounts(2)]),
+            accounts(2)
         );
         testing_env!(context.is_view(true).build());
         assert_eq!(contract.get_owner(), accounts(0).to_string());
@@ -1236,8 +1336,9 @@ mod tests {
         );
 
         contract.internal_add_offer(
-            accounts(3),
-            "1:1".to_string(),
+            accounts(3).to_string(),
+            Some("1:1".to_string()),
+            None,
             "near".to_string(),
             U128(one_near),
             accounts(0).to_string()
@@ -1246,7 +1347,8 @@ mod tests {
         let offer_data = contract.get_offer(
             accounts(3),
             accounts(0),
-            "1:1".to_string()
+            Some("1:1".to_string()),
+            None
         );
 
         assert_eq!(offer_data.buyer_id, accounts(0).to_string());
@@ -1267,8 +1369,9 @@ mod tests {
         );
 
         contract.internal_add_offer(
-            accounts(3),
-            "1:1".to_string(),
+            accounts(3).to_string(),
+            Some("1:1".to_string()),
+            None,
             "near".to_string(),
             U128(one_near),
             accounts(0).to_string()
@@ -1276,13 +1379,15 @@ mod tests {
 
         contract.delete_offer(
             accounts(3),
-            "1:1".to_string()
+            Some("1:1".to_string()),
+            None
         );
 
         contract.get_offer(
             accounts(3),
             accounts(1),
-            "1:1".to_string()
+            Some("1:1".to_string()),
+            None
         );
     }
 }

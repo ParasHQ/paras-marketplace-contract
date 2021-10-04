@@ -66,3 +66,21 @@ Transaction Id mhfKCh6RxGSwcAohEwMZC2VUv3kteqoGfs5APiGL1aP
 To see the transaction in the transaction explorer, please open this url in your browser
 https://explorer.testnet.near.org/transactions/mhfKCh6RxGSwcAohEwMZC2VUv3kteqoGfs5APiGL1aP
 ```
+
+## NFT accept offer Paras series NFT
+```
+$ near call --accountId gnaor.testnet dev-1633337760334-37276932331579 nft_approve '{"token_id":"1:15","account_id":"dev-1633354630145-57340825824805","msg":"{\"market_type\":\"accept_offer_paras_series\",\"account_id\":\"cymac.testnet\"}"}' --depositYocto 440000000000000000000 --gas 300000000000000
+Scheduling a call: dev-1633337760334-37276932331579.nft_approve({"token_id":"1:15","account_id":"dev-1633354630145-57340825824805","msg":"{\"market_type\":\"accept_offer_paras_series\",\"account_id\":\"cymac.testnet\"}"}) with attached 0.00044 NEAR
+Retrying request to broadcast_tx_commit as it has timed out [
+'DQAAAGduYW9yLnRlc3RuZXQA1ppnEtFtCLv528lk5cawPJOIuphC0tVOpkvnRGSqibhrAQAAAAAAACAAAABkZXYtMTYzMzMzNzc2MDMzNC0zNzI3NjkzMjMzMTU3Obb0KrkP+AwBHel56Ao9MpMYauNvHHnXDoUALG5jno5ZAQAAAAILAAAAbmZ0X2FwcHJvdmWcAAAAeyJ0b2tlbl9pZCI6IjE6MTUiLCJhY2NvdW50X2lkIjoiZGV2LTE2MzMzNTQ2MzAxNDUtNTczNDA4MjU4MjQ4MDUiLCJtc2ciOiJ7XCJtYXJrZXRfdHlwZVwiOlwiYWNjZXB0X29mZmVyX3BhcmFzX3Nlcmllc1wiLFwiYWNjb3VudF9pZFwiOlwiY3ltYWMudGVzdG5ldFwifSJ9AMBuMdkQAQAAAOCzxwQ62hcAAAAAAAAAAP1iAMGljBH81cqnlrJhuKfTdC5kKbgsJOAupMt6wqK2WfCUQ6fXVkz7YOqVpICcrBZ4iRqOdybfBpILa3D5yAU='
+]
+Receipt: 14aDLXPZ8M1cuaj9C6zTY93nc8qDds2R1zqFhYrVT4WY
+Log [dev-1633337760334-37276932331579]: Transfer 1:15 from dev-1633354630145-57340825824805 to cymac.testnet
+Log [dev-1633337760334-37276932331579]: {"type":"nft_transfer","params":{"token_id":"1:15","sender_id":"gnaor.testnet","receiver_id":"cymac.testnet"}}
+Receipts: 4jHAor7BMfBc327KUkHvfgQGc7AR6pe9fzxernzni6vA, 7vSHhX9uUz9YLupXziwzUQwhCy2Xtp9YmJdqzfA37B8z, EekV83NNHuSveEQLAobh6TLAvwhgiP3ojYSMzi7fkRfp, FEEXCaG7oxdpNY857nzdeixvdujwJN6QTnBAdLayXbL4
+Log [dev-1633337760334-37276932331579]: {"type":"resolve_purchase","params":{"owner_id":"gnaor.testnet","nft_contract_id":"dev-1633337760334-37276932331579","token_id":null,"ft_token_id":"near","price":"100000000000000000000000","buyer_id":"cymac.testnet"}}
+Transaction Id 3BPCzaBFCLTKMUuFT7JbtVMwaEspNvH6o1gxubB5Z5pG
+To see the transaction in the transaction explorer, please open this url in your browser
+https://explorer.testnet.near.org/transactions/3BPCzaBFCLTKMUuFT7JbtVMwaEspNvH6o1gxubB5Z5pG
+''
+```
