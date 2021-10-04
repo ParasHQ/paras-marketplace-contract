@@ -272,7 +272,7 @@ impl Contract {
         buyer_id: AccountId,
     ) -> Promise {
 
-        let market_data = self.internal_delete_market_data(&nft_contract_id, &token_id); 
+        let market_data = self.internal_delete_market_data(&nft_contract_id, &token_id).expect("Paras: Sale does not exist");
 
         ext_contract::nft_transfer_payout(
             buyer_id.clone(),
@@ -565,6 +565,8 @@ impl Contract {
             token_id.clone()
         ).expect("Paras: Offer does not exist");
 
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+
         ext_contract::nft_transfer_payout(
             offer_data.buyer_id.clone(),
             token_id,
@@ -767,19 +769,23 @@ impl Contract {
         &mut self,
         nft_contract_id: &AccountId,
         token_id: &TokenId
-    ) -> MarketData {
+    ) -> Option<MarketData> {
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
-        let market_data = self.market.remove(&contract_and_token_id).expect("No sale");
+        let market_data = self.market.remove(&contract_and_token_id);
 
-        let mut by_owner_id = self.by_owner_id.get(&market_data.owner_id).expect("No sale by owner_id");
-        by_owner_id.remove(&contract_and_token_id);
-        if by_owner_id.is_empty() {
-            self.by_owner_id.remove(&market_data.owner_id);
+        if let Some(market) = market_data {
+            let mut by_owner_id = self.by_owner_id.get(&market.owner_id).expect("No sale by owner_id");
+            by_owner_id.remove(&contract_and_token_id);
+            if by_owner_id.is_empty() {
+                self.by_owner_id.remove(&market.owner_id);
+            } else {
+                self.by_owner_id.insert(&market.owner_id, &by_owner_id);
+            }
+
+            Some(market)
         } else {
-            self.by_owner_id.insert(&market_data.owner_id, &by_owner_id);
+            None
         }
-
-        market_data
     }
 
     #[payable]
