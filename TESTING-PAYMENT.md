@@ -2,7 +2,7 @@
 
 ## NFT deploy
 ```
-near call --accountId gnaor.testnet dev-1630163823356-82615235483639 new_default_meta '{"owner_id":"gnaor.testnet"}'
+near call --accountId gnaor.testnet dev-1630163823356-82615235483639 new_default_meta '{"owner_id":"gnaor.testnet", "treasury_id": "johnnear.testnet"}'
 ```
 
 ## NFT create series
@@ -18,8 +18,7 @@ near call --networkId testnet --accountId gnaor.testnet dev-1630163823356-826152
 
 ## Marketplace deploy
 ```
-near call --accountId dev-1630164914800-20665050242974 dev-1630164914800-20665050242974 new '{"treasury_id":"johnnear.testnet","owner_id":"dev-1630164914800-20665050242974","approved_nft_contract_ids":["dev-1630163823356-82615235483639"]}
-'
+near call --accountId dev-1630164914800-20665050242974 dev-1630164914800-20665050242974 new '{"treasury_id":"johnnear.testnet","owner_id":"dev-1630164914800-20665050242974","approved_nft_contract_ids":["dev-1630163823356-82615235483639"]}'
 ```
 
 ### Explanation
@@ -32,9 +31,13 @@ near call --accountId dev-1630164914800-20665050242974 dev-1630164914800-2066505
     buyer: cymac.testnet
 ```
 
+## Storage deposit
+```
+near call dev-1630164914800-20665050242974 storage_deposit '{"accountId":"gnaor.testnet"}' --accountId gnaor.testnet --depositYocto 8590000000000000000000
+```
 ## NFT sell 
 ```
-near call --accountId gnaor.testnet dev-1630163823356-82615235483639 nft_approve '{"token_id":"2:1","account_id":"dev-1630164914800-20665050242974","msg":"{\"price\":\"3000000000000000000000000\",\"ft_token_id\":\"near\"}"}' --depositYocto 1320000000000000000000
+near call --accountId gnaor.testnet dev-1630163823356-82615235483639 nft_approve '{"token_id":"2:1","account_id":"dev-1630164914800-20665050242974","msg":"{\"market_type\":"sale",\"price\":\"3000000000000000000000000\",\"ft_token_id\":\"near\"}"}' --depositYocto 1320000000000000000000
 ```
 
 ## Get market data
@@ -57,10 +60,10 @@ View call: dev-1630164914800-20665050242974.get_market_data({"nft_contract_id":"
 
 ## NFT buy
 ```
-near --accountId cymac.testnet dev-1630164914800-20665050242974 buy '{"nft_contract_id":"dev-1630163823356-82615235483639","token_id":"2:1"}' --deposit 3 --gas 160000000000000
+near call --accountId cymac.testnet dev-1630164914800-20665050242974 buy '{"nft_contract_id":"dev-1630163823356-82615235483639","token_id":"2:1"}' --deposit 3 --gas 160000000000000
 ```
 
-#### REsult
+#### Result
 ```
 $ near --accountId cymac.testnet call dev-1630164914800-20665050242974 buy '{"nft_contract_id":"dev-1630163823356-82615235483639","token_id":"2:1"}' --deposit 3 --gas 160000000000000
 Scheduling a call: dev-1630164914800-20665050242974.buy({"nft_contract_id":"dev-1630163823356-82615235483639","token_id":"2:1"}) with attached 3 NEAR
