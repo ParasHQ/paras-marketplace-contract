@@ -100,6 +100,13 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         else if market_type == "accept_offer" {
             assert!(account_id.is_some(), "Paras: Account id is not specified");
 
+            self.internal_accept_offer(
+                nft_contract_id,
+                account_id.unwrap(),
+                token_id,
+                owner_id.to_string(),
+                approval_id
+            );
         }
     }
 }

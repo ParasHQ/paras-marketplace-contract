@@ -51,11 +51,23 @@ pub struct MarketData {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct OfferData {
-    pub account_id: AccountId,
+    pub buyer_id: AccountId,
     pub nft_contract_id: String,
-    pub token_id: TokenId,
+    pub token_id: Option<TokenId>,
+    pub token_series_id: Option<TokenId>,
     pub ft_token_id: AccountId, // "near" for NEAR token
     pub price: u128,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct OfferDataJson {
+    buyer_id: AccountId,
+    nft_contract_id: String,
+    token_id: Option<TokenId>,
+    token_series_id: Option<TokenId>,
+    ft_token_id: AccountId, // "near" for NEAR token
+    price: U128,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -334,41 +346,124 @@ impl Contract {
 
     // Offer
 
-    #[payable]
-    pub fn offer(
+    fn internal_add_offer(
         &mut self,
         nft_contract_id: ValidAccountId,
         token_id: TokenId,
-        ft_token_id: ValidAccountId,
-        price: U128
+        ft_token_id: AccountId,
+        price: U128,
+        account_id: AccountId,
     ) {
-        assert_eq!(
-            env::attached_deposit(),
-            price,
-            "Attached deposit != price"
-        );
-
-        assert_eq!(
-            ft_token_id,
-            "near",
-            "Only NEAR is supported with offer function call"
-        );
-
-        let account_id = env::predecessor_account_id();
         let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
-
         self.offers.insert(
             &contract_account_id_token_id,
             &OfferData {
-                account_id: account_id.clone().into(),
+                buyer_id: account_id.clone().into(),
                 nft_contract_id: nft_contract_id.clone().into(),
-                token_id: token_id.clone(),
+                token_id: Some(token_id.clone()),
+                token_series_id: None,
                 ft_token_id: ft_token_id.clone().into(),
                 price: price.into(),
             },
         );
 
-        // TODO: storage
+        let mut token_ids = self.by_owner_id.get(&account_id).unwrap_or_else(|| {
+            UnorderedSet::new(
+                StorageKey::ByOwnerIdInner {
+                    account_id_hash: hash_account_id(&account_id),
+                }
+                    .try_to_vec()
+                    .unwrap()
+            )
+        });
+        token_ids.insert(&contract_account_id_token_id);
+        self.by_owner_id.insert(&account_id, &token_ids);
+
+        env::log(
+            json!({
+                "type": "add_offer",
+                "params": {
+                    "buyer_id": account_id,
+                    "nft_contract_id": nft_contract_id,
+                    "token_id": token_id,
+                    "ft_token_id": ft_token_id,
+                    "price": price,
+                }
+            })
+                .to_string()
+                .as_bytes(),
+        );
+    }
+
+    #[payable]
+    pub fn add_offer(
+        &mut self,
+        nft_contract_id: ValidAccountId,
+        token_id: TokenId,
+        ft_token_id: AccountId,
+        price: U128
+    ) {
+        assert_eq!(
+            env::attached_deposit(),
+            price.0,
+            "Paras: Attached deposit != price"
+        );
+
+        assert_eq!(
+            ft_token_id.to_string(),
+            "near",
+            "Paras: Only NEAR is supported"
+        );
+
+        let account_id = env::predecessor_account_id();
+        self.internal_delete_offer(
+            nft_contract_id.clone().into(),
+            account_id.clone(),
+            token_id.clone()
+        );
+
+        let storage_amount = self.storage_minimum_balance().0;
+        let owner_paid_storage = self.storage_deposits.get(&account_id).unwrap_or(0);
+        let signer_storage_required =
+            (self.get_supply_by_owner_id(account_id.clone()).0 + 1) as u128 * storage_amount;
+
+        assert!(
+            owner_paid_storage >= signer_storage_required,
+            "Insufficient storage paid: {}, for {} offer at {} rate of per offer",
+            owner_paid_storage, signer_storage_required / storage_amount, storage_amount,
+        );
+
+        self.internal_add_offer(
+            nft_contract_id,
+            token_id,
+            ft_token_id,
+            price,
+            account_id
+        );
+    }
+
+    fn internal_delete_offer(
+        &mut self,
+        nft_contract_id: AccountId,
+        account_id: AccountId,
+        token_id: TokenId,
+    ) -> Option<OfferData> {
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+        let offer_data = self.offers.remove(&contract_account_id_token_id);
+
+        match offer_data {
+            Some(offer) => {
+                let mut by_owner_id = self.by_owner_id.get(&offer.buyer_id).expect("Paras: no market data by account_id");
+                by_owner_id.remove(&contract_account_id_token_id);
+                if by_owner_id.is_empty() {
+                    self.by_owner_id.remove(&offer.buyer_id);
+                } else {
+                    self.by_owner_id.insert(&offer.buyer_id, &by_owner_id);
+                }
+                return Some(offer);
+            },
+            None => return None,
+        };
     }
 
     pub fn delete_offer(
@@ -377,9 +472,26 @@ impl Contract {
         token_id: TokenId,
     ) {
         let account_id = env::predecessor_account_id();
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+        let offer_data = self.internal_delete_offer(
+            nft_contract_id.clone().into(),
+            account_id.clone(),
+            token_id.clone()
+        ).expect("Paras: Offer not found");
 
-        self.offers.remove(&contract_account_id_token_id);
+        Promise::new(offer_data.buyer_id).transfer(offer_data.price);
+
+        env::log(
+            json!({
+                "type": "delete_offer",
+                "params": {
+                    "nft_contract_id": nft_contract_id,
+                    "account_id": account_id,
+                    "token_id": token_id,
+                }
+            })
+                .to_string()
+                .as_bytes(),
+        );
     }
 
     pub fn get_offer(
@@ -387,9 +499,18 @@ impl Contract {
         nft_contract_id: ValidAccountId,
         account_id: ValidAccountId,
         token_id: TokenId
-    ) -> OfferData {
+    ) -> OfferDataJson {
         let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
-        self.offers.get(&contract_account_id_token_id).expect("Offer does not exist")
+        let offer_data = self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
+
+        OfferDataJson {
+            buyer_id: offer_data.buyer_id,
+            nft_contract_id: offer_data.nft_contract_id,
+            token_id: offer_data.token_id,
+            token_series_id: offer_data.token_series_id,
+            ft_token_id: offer_data.ft_token_id,
+            price: U128(offer_data.price)
+        }
     }
 
     fn internal_accept_offer(
@@ -399,38 +520,115 @@ impl Contract {
         token_id: TokenId,
         seller_id: AccountId,
         approval_id: u64,
-    ) {
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
-        let offer_data = self.offers.remove(&contract_account_id_token_id);
+    ) -> Promise {
+        let offer_data = self.internal_delete_offer(
+            nft_contract_id.clone().into(),
+            account_id.clone(),
+            token_id.clone()
+        ).expect("Paras: Offer does not exist");
+
+
 
         // transfer nft to account_id
-
-        ext_contract::nft_transfer(
-            account_id.into(),
+        ext_contract::nft_transfer_payout(
+            offer_data.buyer_id.clone(),
             token_id,
-            approval_id,
+            Some(approval_id),
+            Some(U128::from(offer_data.price)),
+            Some(10u32), // max length payout
             &nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
-        ).then(
-            ext_self::resolve_offer(
-                seller_id.into(),
-                offer_data,
-                &env::current_account_id(),
-                NO_DEPOSIT,
-                GAS_FOR_ROYALTIES,
-            )
-        );
-
+        )
+        .then(ext_self::resolve_offer(
+            seller_id,
+            offer_data,
+            &env::current_account_id(),
+            NO_DEPOSIT,
+            GAS_FOR_ROYALTIES,
+        ))
     }
 
     #[private]
-    fn resolve_offer(
-        buyer_id: ValidAccountId,
+    pub fn resolve_offer(
+        &mut self,
+        seller_id: AccountId,
         offer_data: OfferData
-    ) {
-        let promise_result = promise_result_as_success();
+    ) -> U128 {
+        let payout_option = promise_result_as_success().and_then(|value| {
+            // None means a bad payout from bad NFT contract
+            near_sdk::serde_json::from_slice::<Payout>(&value)
+                .ok()
+                .and_then(|payout| {
+                    let mut remainder = offer_data.price;
+                    for &value in payout.values() {
+                        remainder = remainder.checked_sub(value.0)?;
+                    }
+                    if remainder == 0 || remainder == 1 {
+                        Some(payout)
+                    } else {
+                        None
+                    }
+                })
+        });
+        let payout = if let Some(payout_option) = payout_option {
+            payout_option
+        } else {
+            if offer_data.ft_token_id == "near" {
+                Promise::new(offer_data.buyer_id.clone()).transfer(u128::from(offer_data.price));
+            }
+            // leave function and return all FTs in ft_resolve_transfer
+            env::log(
+                json!({
+                    "type": "resolve_purchase_fail",
+                    "params": {
+                        "owner_id": seller_id,
+                        "nft_contract_id": offer_data.nft_contract_id,
+                        "token_id": offer_data.token_id,
+                        "ft_token_id": offer_data.ft_token_id,
+                        "price": offer_data.price.to_string(),
+                        "buyer_id": offer_data.buyer_id,
+                    }
+                })
+                    .to_string()
+                    .as_bytes(),
+            );
+            return offer_data.price.into();
+        };
 
+        // Payout (transfer to royalties and seller)
+        if offer_data.ft_token_id == "near" {
+            // 5% fee for treasury
+            let treasury_fee = offer_data.price as u128 * TREASURY_FEE / 10_000u128;
+
+            for (receiver_id, amount) in payout {
+                if receiver_id == seller_id {
+                    Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
+                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                } else {
+                    Promise::new(receiver_id).transfer(amount.0);
+                }
+            }
+            env::log(
+                json!({
+                    "type": "resolve_purchase",
+                    "params": {
+                        "owner_id": seller_id,
+                        "nft_contract_id": offer_data.nft_contract_id,
+                        "token_id": offer_data.token_id,
+                        "ft_token_id": offer_data.ft_token_id,
+                        "price": offer_data.price.to_string(),
+                        "buyer_id": offer_data.buyer_id,
+                    }
+                })
+                    .to_string()
+                    .as_bytes(),
+            );
+
+            return offer_data.price.into();
+        } else {
+            U128(0)
+        }
     }
 
     // Market Data functions
@@ -699,7 +897,7 @@ mod tests {
     use near_sdk::MockedBlockchain;
     use near_sdk::{testing_env};
     use std::convert::TryFrom;
-    
+
     fn get_context(predecessor_account_id: ValidAccountId) -> VMContextBuilder {
         let mut builder = VMContextBuilder::new();
         builder
@@ -982,5 +1180,68 @@ mod tests {
 
         let storage_balance = contract.storage_balance_of(accounts(0)).0;
         assert_eq!(0, storage_balance);
+    }
+
+    #[test]
+    fn test_add_offer() {
+        let (mut context, mut contract) = setup_contract();
+
+        let one_near = 10u128.pow(24);
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(one_near)
+            .build()
+        );
+
+        contract.internal_add_offer(
+            accounts(3),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128(one_near),
+            accounts(0).to_string()
+        );
+
+        let offer_data = contract.get_offer(
+            accounts(3),
+            accounts(0),
+            "1:1".to_string()
+        );
+
+        assert_eq!(offer_data.buyer_id, accounts(0).to_string());
+        assert_eq!(offer_data.price, U128(one_near));
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: Offer does not exist")]
+    fn test_delete_offer() {
+        let (mut context, mut contract) = setup_contract();
+
+        let one_near = 10u128.pow(24);
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(one_near)
+            .build()
+        );
+
+        contract.internal_add_offer(
+            accounts(3),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128(one_near),
+            accounts(0).to_string()
+        );
+
+        contract.delete_offer(
+            accounts(3),
+            "1:1".to_string()
+        );
+
+        contract.get_offer(
+            accounts(3),
+            accounts(1),
+            "1:1".to_string()
+        );
     }
 }
