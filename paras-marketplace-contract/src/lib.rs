@@ -81,6 +81,17 @@ pub struct MarketDataJson {
     price: U128,
 }
 
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+pub struct ContractV1 {
+    pub owner_id: AccountId,
+    pub treasury_id: AccountId,
+    pub market: UnorderedMap<ContractAndTokenId, MarketData>,
+    pub approved_ft_token_ids: UnorderedSet<AccountId>,
+    pub approved_nft_contract_ids: UnorderedSet<AccountId>,
+    pub storage_deposits: LookupMap<AccountId, Balance>,
+    pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>
+}
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -140,6 +151,27 @@ impl Contract {
         }
 
         this
+    }
+
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        let prev: ContractV1 = env::state_read().expect("ERR_NOT_INITIALIZED");
+        assert_eq!(
+            env::predecessor_account_id(),
+            prev.owner_id,
+            "Paras: Only owner"
+        );
+
+        Contract {
+            owner_id: prev.owner_id,
+            treasury_id: prev.treasury_id,
+            market: prev.market,
+            approved_ft_token_ids: prev.approved_ft_token_ids,
+            approved_nft_contract_ids: prev.approved_nft_contract_ids,
+            storage_deposits: prev.storage_deposits,
+            by_owner_id: prev.by_owner_id,
+            offers: UnorderedMap::new(StorageKey::Offers),
+        }
     }
 
     // Changing treasury & ownership
