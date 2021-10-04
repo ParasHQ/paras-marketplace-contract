@@ -14,7 +14,7 @@ use crate::external::*;
 mod external;
 mod nft_callbacks;
 
-const GAS_FOR_NFT_TRANSFER: Gas = 15_000_000_000_000;
+const GAS_FOR_NFT_TRANSFER: Gas = 20_000_000_000_000;
 const BASE_GAS: Gas = 5_000_000_000_000;
 const GAS_FOR_ROYALTIES: Gas = BASE_GAS * 10;
 const NO_DEPOSIT: Balance = 0;
@@ -565,7 +565,6 @@ impl Contract {
             token_id.clone()
         ).expect("Paras: Offer does not exist");
 
-        // transfer nft to account_id
         ext_contract::nft_transfer_payout(
             offer_data.buyer_id.clone(),
             token_id,
@@ -921,7 +920,7 @@ trait ExtSelf {
 
     fn resolve_offer(
         &mut self,
-        buyer_id: AccountId,
+        seller_id: AccountId,
         offer_data: OfferData
     ) -> Promise;
 }
