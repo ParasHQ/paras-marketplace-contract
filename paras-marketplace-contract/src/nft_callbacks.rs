@@ -11,7 +11,7 @@ pub struct MarketArgs {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ft_token_id: Option<AccountId>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub account_id: Option<AccountId>, // offer
+    pub buyer_id: Option<AccountId>, // offer
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_price: Option<U128>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -65,7 +65,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             market_type, 
             price, 
             ft_token_id, 
-            account_id,
+            buyer_id,
             started_at,
             ended_at,
             end_price,
@@ -114,23 +114,23 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             );
         }
         else if market_type == "accept_offer" {
-            assert!(account_id.is_some(), "Paras: Account id is not specified");
+            assert!(buyer_id.is_some(), "Paras: Account id is not specified");
 
             self.internal_accept_offer(
                 nft_contract_id,
-                account_id.unwrap(),
+                buyer_id.unwrap(),
                 token_id,
                 owner_id.to_string(),
                 approval_id
             );
         }
         else if market_type == "accept_offer_paras_series" {
-            assert!(account_id.is_some(), "Paras: Account id is not specified");
+            assert!(buyer_id.is_some(), "Paras: Account id is not specified");
             assert!(self.paras_nft_contracts.contains(&nft_contract_id), "Paras: accepting offer series for Paras NFT only");
 
             self.internal_accept_offer_series(
                 nft_contract_id,
-                account_id.unwrap(),
+                buyer_id.unwrap(),
                 token_id,
                 owner_id.to_string(),
                 approval_id

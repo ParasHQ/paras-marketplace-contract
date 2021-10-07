@@ -488,7 +488,7 @@ impl Contract {
         token_series_id: Option<TokenId>,
         ft_token_id: AccountId,
         price: U128,
-        account_id: AccountId,
+        buyer_id: AccountId,
     ) {
         let token = if token_id.is_some() {
             token_id.as_ref().unwrap().to_string()
@@ -496,11 +496,11 @@ impl Contract {
             token_series_id.as_ref().unwrap().to_string()
         };
 
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token);
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, buyer_id, DELIMETER, token);
         self.offers.insert(
             &contract_account_id_token_id,
             &OfferData {
-                buyer_id: account_id.clone().into(),
+                buyer_id: buyer_id.clone().into(),
                 nft_contract_id: nft_contract_id.into(),
                 token_id: token_id,
                 token_series_id: token_series_id,
@@ -509,17 +509,17 @@ impl Contract {
             },
         );
 
-        let mut token_ids = self.by_owner_id.get(&account_id).unwrap_or_else(|| {
+        let mut token_ids = self.by_owner_id.get(&buyer_id).unwrap_or_else(|| {
             UnorderedSet::new(
                 StorageKey::ByOwnerIdInner {
-                    account_id_hash: hash_account_id(&account_id),
+                    account_id_hash: hash_account_id(&buyer_id),
                 }
                     .try_to_vec()
                     .unwrap()
             )
         });
         token_ids.insert(&contract_account_id_token_id);
-        self.by_owner_id.insert(&account_id, &token_ids);
+        self.by_owner_id.insert(&buyer_id, &token_ids);
     }
 
     #[payable]
@@ -550,21 +550,21 @@ impl Contract {
             "Paras: Only NEAR is supported"
         );
 
-        let account_id = env::predecessor_account_id();
+        let buyer_id = env::predecessor_account_id();
         let offer_data = self.internal_delete_offer(
             nft_contract_id.clone().into(),
-            account_id.clone(),
+            buyer_id.clone(),
             token.clone()
         );
 
         if offer_data.is_some() {
-            Promise::new(account_id.clone()).transfer(offer_data.unwrap().price);
+            Promise::new(buyer_id.clone()).transfer(offer_data.unwrap().price);
         }
 
         let storage_amount = self.storage_minimum_balance().0;
-        let owner_paid_storage = self.storage_deposits.get(&account_id).unwrap_or(0);
+        let owner_paid_storage = self.storage_deposits.get(&buyer_id).unwrap_or(0);
         let signer_storage_required =
-            (self.get_supply_by_owner_id(account_id.clone()).0 + 1) as u128 * storage_amount;
+            (self.get_supply_by_owner_id(buyer_id.clone()).0 + 1) as u128 * storage_amount;
 
         assert!(
             owner_paid_storage >= signer_storage_required,
@@ -578,14 +578,14 @@ impl Contract {
             token_series_id.clone(),
             ft_token_id.clone(),
             price,
-            account_id.clone()
+            buyer_id.clone()
         );
 
         env::log(
             json!({
                 "type": "add_offer",
                 "params": {
-                    "buyer_id": account_id,
+                    "buyer_id": buyer_id,
                     "nft_contract_id": nft_contract_id,
                     "token_id": token_id,
                     "token_series_id": token_series_id,
@@ -601,10 +601,10 @@ impl Contract {
     fn internal_delete_offer(
         &mut self,
         nft_contract_id: AccountId,
-        account_id: AccountId,
+        buyer_id: AccountId,
         token_id: TokenId,
     ) -> Option<OfferData> {
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token_id);
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, buyer_id, DELIMETER, token_id);
         let offer_data = self.offers.remove(&contract_account_id_token_id);
 
         match offer_data {
@@ -634,10 +634,10 @@ impl Contract {
             token_series_id.as_ref().unwrap().to_string()
         };
 
-        let account_id = env::predecessor_account_id();
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token);
+        let buyer_id = env::predecessor_account_id();
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, buyer_id, DELIMETER, token);
 
-        let offer_data= self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
+        let offer_data = self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
 
         if token_id.is_some() {
             assert_eq!(offer_data.token_id.unwrap(), token)
@@ -645,11 +645,11 @@ impl Contract {
             assert_eq!(offer_data.token_series_id.unwrap(), token)
         }
 
-        assert_eq!(offer_data.buyer_id, account_id, "Paras: Caller not offer's buyer");
+        assert_eq!(offer_data.buyer_id, buyer_id, "Paras: Caller not offer's buyer");
 
         self.internal_delete_offer(
             nft_contract_id.clone().into(),
-            account_id.clone(),
+            buyer_id.clone(),
             token.clone(),
         ).expect("Paras: Offer not found");
 
@@ -660,7 +660,7 @@ impl Contract {
                 "type": "delete_offer",
                 "params": {
                     "nft_contract_id": nft_contract_id,
-                    "account_id": account_id,
+                    "buyer_id": buyer_id,
                     "token_id": token_id,
                     "token_series_id": token_series_id,
                 }
@@ -741,7 +741,7 @@ impl Contract {
     fn internal_accept_offer_series(
         &mut self,
         nft_contract_id: AccountId,
-        account_id: AccountId,
+        buyer_id: AccountId,
         token_id: TokenId,
         seller_id: AccountId,
         approval_id: u64,
@@ -753,7 +753,7 @@ impl Contract {
 
         let offer_data = self.internal_delete_offer(
             nft_contract_id.clone().into(),
-            account_id.clone(),
+            buyer_id.clone(),
             token_series_id.clone()
         ).expect("Paras: Offer does not exist");
 
