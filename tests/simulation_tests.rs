@@ -3,8 +3,33 @@ use near_sdk::serde_json::json;
 use near_sdk::json_types::{U128, U64};
 use near_sdk_sim::{view, to_yocto, DEFAULT_GAS};
 use near_contract_standards::non_fungible_token::Token;
-use paras_marketplace_contract::MarketDataJson;
+use near_sdk::serde::{Deserialize, Serialize};
 
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Bid {
+    pub bidder_id: AccountId,
+    pub price: U128,
+}
+
+pub type Bids = Vec<Bid>; 
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct MarketDataJson {
+    owner_id: AccountId,
+    approval_id: U64,
+    nft_contract_id: String,
+    token_id: String,
+    ft_token_id: AccountId, // "near" for NEAR token
+    price: U128,
+    bids: Option<Bids>,
+    started_at: Option<U64>,
+    ended_at: Option<U64>,
+    end_price: Option<U128>, // dutch auction
+    is_auction: Option<bool>,
+}
 
 use crate::utils::{
     init, create_nft_and_mint_one, STORAGE_ADD_MARKET_DATA, STORAGE_APPROVE,
@@ -337,19 +362,102 @@ fn test_add_market_data_auction_timed() {
     );
 
     assert_eq!(outcome.promise_errors().len(), 1);
+}
 
+#[test]
+fn test_add_market_data_dutch_auction() {
+    let (marketplace, nft, _, alice, bob, chandra, root) = init();
 
+    //owner marketplace and nft-> alice
+    //seller -> bob
+    //buyer -> chandra
+    //treasury -> treasury
+    //royalty to 10 different account
 
+    const OCTOBER_1_2021: u64 = 1633046400000000000;
+    const ONE_DAY: u64 = 86400000000000;
 
-    // let market_data: MarketDataJson = alice.view(
-    //     marketplace.account_id(),
-    //     "get_market_data",
-    //     &json!({
-    //         "nft_contract_id": nft.account_id(),
-    //         "token_id": format!("{}:{}", "1", "1")
-    //     }).to_string().into_bytes(),
-    // ).unwrap_json();
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+    let msg = &json!({
+        "market_type":"sale",
+        "price": to_yocto("3").to_string(), 
+        "ft_token_id": "near",
+        "is_auction": true,
+        "started_at": U64(OCTOBER_1_2021),
+        "ended_at": U64(OCTOBER_1_2021 + ONE_DAY*7),
+        "end_price": to_yocto("2").to_string(),
+    }).to_string();
 
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    ).assert_success();
 
-    // println!("{:#?}", market_data);
+    let initial_storage_usage = marketplace.account().unwrap().storage_usage;
+
+    let outcome = chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": format!("{}:{}", "1", "1"),
+            "account_id": marketplace.valid_account_id(),
+            "msg": msg,
+        }).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_APPROVE,
+    );
+
+    outcome.assert_success();
+    let storage_price_for_add_market = 
+        (marketplace.account().unwrap().storage_usage - initial_storage_usage) as u128 * 10u128.pow(19);
+    //println!("{:?}", outcome.promise_results());
+    println!("[ADD MARKET DATA DUTCH AUCTION] Gas burnt: {} TeraGas", outcome.gas_burnt() as f64 / 1e12);
+    println!("[ADD MARKET DATA DUTCH AUCTION] Storage price : {} yoctoNEAR", storage_price_for_add_market);
+
+    alice.borrow_runtime_mut().cur_block.block_timestamp = OCTOBER_1_2021 + ONE_DAY*1;
+
+    let market_data: MarketDataJson = alice.view(
+        marketplace.account_id(),
+        "get_market_data",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": "1:1"
+        }).to_string().into_bytes()
+    ).unwrap_json();
+
+    println!("[DUTCH AUCTION] Price after one day: {}", market_data.price.0);
+
+    alice.borrow_runtime_mut().cur_block.block_timestamp = OCTOBER_1_2021 + ONE_DAY*2;
+
+    let market_data: MarketDataJson = alice.view(
+        marketplace.account_id(),
+        "get_market_data",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": "1:1"
+        }).to_string().into_bytes()
+    ).unwrap_json();
+
+    println!("[DUTCH AUCTION] Price after two day: {}", market_data.price.0);
+
+    //buyer
+    let buyer_person = root.create_user(
+        "o".repeat(64),
+        to_yocto("100")
+    );
+    let outcome = buyer_person.call(
+        marketplace.account_id(),
+        "buy",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+        }).to_string().into_bytes(),
+        GAS_BUY,
+        market_data.price.0,
+    );
+
+    outcome.assert_success();
 }

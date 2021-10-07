@@ -113,6 +113,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 price.unwrap(),
                 started_at,
                 ended_at,
+                end_price,
                 is_auction
             );
         }

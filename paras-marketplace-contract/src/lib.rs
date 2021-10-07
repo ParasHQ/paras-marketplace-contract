@@ -28,12 +28,6 @@ pub type Payout = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
 pub type ContractAccountIdTokenId = String;
 pub type TokenId = String;
-pub enum MarketType {
-    Sale,
-    AcceptOffer,
-    Auction,
-    Trade,
-}
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -59,6 +53,8 @@ pub struct MarketData {
     pub started_at: Option<u64>,
     pub ended_at: Option<u64>,
     pub end_price: Option<u128>, // dutch auction
+    pub accept_nft_contract_id: Option<String>,
+    pub accept_token_id: Option<String>,
     pub is_auction: Option<bool>,
 }
 
@@ -269,11 +265,6 @@ impl Contract {
             "Paras: Cannot buy your own sale"
         );
 
-        assert!(
-            env::attached_deposit() >= market_data.price,
-            "Paras: Attached deposit is not sufficient"
-        );
-
         // only NEAR supported for now
         assert_eq!(
             market_data.ft_token_id,
@@ -281,7 +272,25 @@ impl Contract {
             "Paras: NEAR support only"
         );
 
-        if let Some(auction) = market_data.is_auction {
+        let mut price = market_data.price;
+
+        if market_data.is_auction.is_some() && market_data.end_price.is_some() {
+            let current_time = env::block_timestamp();
+            let end_price = market_data.end_price.unwrap();
+            let ended_at = market_data.ended_at.unwrap();
+            let started_at = market_data.started_at.unwrap();
+
+            assert!(current_time >= started_at, "Paras: Auction has not started yet");
+
+            if current_time > ended_at {
+                price = end_price;
+            } else {
+                let time_since_start = current_time - started_at;
+                let duration = ended_at - started_at;
+                price = price - ((price - end_price) / duration as u128) * time_since_start as u128;
+            }
+
+        } else if let Some(auction) = market_data.is_auction {
             assert_eq!(
                 auction,
                 false,
@@ -289,11 +298,17 @@ impl Contract {
             );
         }
 
+        assert!(
+            env::attached_deposit() >= price,
+            "Paras: Attached deposit is less than price {}", 
+            price
+        );
+
         self.internal_process_purchase(
             nft_contract_id.into(),
             token_id,
             buyer_id,
-            market_data.price,
+            price,
         );
     }
 
@@ -826,6 +841,11 @@ impl Contract {
             "Paras: Only support NEAR"
         );
 
+        assert!(
+            market_data.end_price.is_none(),
+            "Paras: Dutch auction does not accept add_bid"
+        );
+
         let new_bid = Bid {
             bidder_id: bidder_id.clone(),
             price: amount.into()
@@ -897,6 +917,11 @@ impl Contract {
             "Paras: Only seller can call accept_bid"
         );
 
+        assert!(
+            market_data.end_price.is_none(),
+            "Paras: Dutch auction does not accept accept_bid"
+        );
+
         let mut bids = market_data.bids.unwrap();
         let selected_bid = bids.remove(bids.len()-1);
         market_data.bids = Some(bids);
@@ -966,6 +991,7 @@ impl Contract {
         price: U128,
         started_at: Option<U64>,
         ended_at: Option<U64>,
+        end_price: Option<U128>,
         is_auction: Option<bool>
     ) {
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
@@ -996,6 +1022,10 @@ impl Contract {
         if ended_at.is_some() {
             assert!(ended_at.unwrap().0 >= current_time);
         }
+        
+        if end_price.is_some() {
+            assert!(end_price.unwrap().0 < price.0, "Paras: End price is more than starting price");
+        }
 
         self.market.insert(
             &contract_and_token_id,
@@ -1006,7 +1036,7 @@ impl Contract {
                 token_id: token_id.clone(),
                 ft_token_id: ft_token_id.clone(),
                 price: price.into(),
-                bids: None,
+                bids: bids,
                 started_at: match started_at {
                     Some(x) => Some(x.0),
                     None => None
@@ -1015,7 +1045,12 @@ impl Contract {
                     Some(x) => Some(x.0),
                     None => None
                 },
-                end_price: None,
+                end_price: match end_price {
+                    Some(x) => Some(x.0),
+                    None => None
+                },
+                accept_nft_contract_id: None,
+                accept_token_id: None,
                 is_auction: is_auction
             },
         );
@@ -1046,6 +1081,7 @@ impl Contract {
                     "price": price,
                     "started_at": started_at,
                     "ended_at": ended_at,
+                    "end_price": end_price,
                     "is_auction": is_auction
                 }
             })
@@ -1158,8 +1194,6 @@ impl Contract {
         U128(self.storage_deposits.get(account_id.as_ref()).unwrap_or(0))
     }
     
-    
-
     // View
 
     pub fn get_market_data(
@@ -1169,13 +1203,33 @@ impl Contract {
     ) -> MarketDataJson {
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist ");
+
+        let mut price = market_data.price;
+
+        if market_data.is_auction.is_some() && market_data.end_price.is_some() {
+            let current_time = env::block_timestamp();
+            let end_price = market_data.end_price.unwrap();
+            let started_at = market_data.started_at.unwrap();
+            let ended_at = market_data.ended_at.unwrap();
+
+            if current_time < started_at {
+                // Use current market_data.price
+            } else if current_time > ended_at {
+                price = end_price;
+            } else {
+                let time_since_start = current_time - started_at;
+                let duration = ended_at - started_at;
+                price = price - ((price - end_price) / duration as u128) * time_since_start as u128;
+            }
+        }
+
         MarketDataJson{
             owner_id: market_data.owner_id,
             approval_id: market_data.approval_id.into(),
             nft_contract_id: market_data.nft_contract_id,
             token_id: market_data.token_id,
             ft_token_id: market_data.ft_token_id, // "near" for NEAR token
-            price: market_data.price.into(),
+            price: U128(price),
             bids: market_data.bids,
             started_at: match market_data.started_at {
                 Some(x) => Some(U64(x)),
@@ -1401,6 +1455,7 @@ mod tests {
             U128::from(1 * 10u128.pow(24)),
             None,
             None,
+            None,
             None
         );
 
@@ -1431,6 +1486,7 @@ mod tests {
             "1:1".to_string(),
             "near".to_string(),
             U128::from(1 * 10u128.pow(24)),
+            None,
             None,
             None,
             None
@@ -1466,6 +1522,7 @@ mod tests {
             "1:1".to_string(),
             "near".to_string(),
             U128::from(1 * 10u128.pow(24)),
+            None,
             None,
             None,
             None,
@@ -1506,6 +1563,7 @@ mod tests {
             "1:1".to_string(),
             "near".to_string(),
             U128::from(1 * 10u128.pow(24)),
+            None,
             None,
             None,
             None
@@ -1638,6 +1696,7 @@ mod tests {
             U128::from(1 * 10u128.pow(24)),
             None,
             None,
+            None,
             Some(true)
         );
 
@@ -1662,6 +1721,7 @@ mod tests {
             "1:1".to_string(),
             "near".to_string(),
             U128::from(1 * 10u128.pow(24)),
+            None,
             None,
             None,
             Some(true),
@@ -1695,6 +1755,7 @@ mod tests {
             "1:1".to_string(),
             "near".to_string(),
             U128::from(1 * 10u128.pow(24)),
+            None,
             None,
             None,
             Some(true),
