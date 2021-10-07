@@ -42,6 +42,17 @@ const DELIMETER: &str = "||";
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
+pub struct MarketDataV1 {
+    pub owner_id: AccountId,
+    pub approval_id: u64,
+    pub nft_contract_id: String,
+    pub token_id: TokenId,
+    pub ft_token_id: AccountId, 
+    pub price: u128, 
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
 pub struct MarketData {
     pub owner_id: AccountId,
     pub approval_id: u64,
@@ -100,7 +111,7 @@ pub struct MarketDataJson {
 pub struct ContractV1 {
     pub owner_id: AccountId,
     pub treasury_id: AccountId,
-    pub market: UnorderedMap<ContractAndTokenId, MarketData>,
+    pub market: UnorderedMap<ContractAndTokenId, MarketDataV1>,
     pub approved_ft_token_ids: UnorderedSet<AccountId>,
     pub approved_nft_contract_ids: UnorderedSet<AccountId>,
     pub storage_deposits: LookupMap<AccountId, Balance>,
@@ -112,6 +123,7 @@ pub struct ContractV1 {
 pub struct Contract {
     pub owner_id: AccountId,
     pub treasury_id: AccountId,
+    pub old_market: UnorderedMap<ContractAndTokenId, MarketDataV1>,
     pub market: UnorderedMap<ContractAndTokenId, MarketData>,
     pub approved_ft_token_ids: UnorderedSet<AccountId>,
     pub approved_nft_contract_ids: UnorderedSet<AccountId>,
@@ -131,6 +143,7 @@ pub enum StorageKey {
     ByOwnerIdInner { account_id_hash: CryptoHash },
     Offers,
     ParasNFTContractIds,
+    MarketV2,
 }
 
 #[near_bindgen]
@@ -146,7 +159,8 @@ impl Contract {
         let mut this = Self {
             owner_id: owner_id.into(),
             treasury_id: treasury_id.into(),
-            market: UnorderedMap::new(StorageKey::Market),
+            old_market: UnorderedMap::new(StorageKey::Market),
+            market: UnorderedMap::new(StorageKey::MarketV2),
             approved_ft_token_ids: UnorderedSet::new(StorageKey::FTTokenIds),
             approved_nft_contract_ids: UnorderedSet::new(StorageKey::NFTContractIds),
             storage_deposits: LookupMap::new(StorageKey::StorageDeposits),
@@ -190,7 +204,8 @@ impl Contract {
         let mut this = Contract {
             owner_id: prev.owner_id,
             treasury_id: prev.treasury_id,
-            market: prev.market,
+            old_market: prev.market,
+            market: UnorderedMap::new(StorageKey::MarketV2),
             approved_ft_token_ids: prev.approved_ft_token_ids,
             approved_nft_contract_ids: prev.approved_nft_contract_ids,
             storage_deposits: prev.storage_deposits,
@@ -271,7 +286,30 @@ impl Contract {
         token_id: TokenId,
     ) {
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
-        let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist");
+        let market_data: Option<MarketData> = if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
+            Some(MarketData {
+                owner_id: market_data.owner_id,
+                approval_id: market_data.approval_id,
+                nft_contract_id: market_data.nft_contract_id,
+                token_id: market_data.token_id,
+                ft_token_id: market_data.ft_token_id,
+                price: market_data.price,
+                bids: None,
+                started_at: None,
+                ended_at: None,
+                end_price: None,
+                accept_nft_contract_id: None,
+                accept_token_id: None,
+                is_auction: None,
+            })
+        } else if let Some(market_data) = self.market.get(&contract_and_token_id) {
+            Some(market_data)
+        } else {
+            env::panic("Paras: Market data does not exist".as_bytes());
+        };
+
+        let market_data: MarketData = market_data.expect("Paras: Market data does not exist");
+
         let buyer_id = env::predecessor_account_id();
 
         assert_ne!(
@@ -1111,27 +1149,52 @@ impl Contract {
         token_id: &TokenId
     ) -> Option<MarketData> {
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
-        let market_data = self.market.remove(&contract_and_token_id);
+        let market_data: Option<MarketData> = if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
+            self.old_market.remove(&contract_and_token_id);
+            Some(MarketData {
+                owner_id: market_data.owner_id,
+                approval_id: market_data.approval_id,
+                nft_contract_id: market_data.nft_contract_id,
+                token_id: market_data.token_id,
+                ft_token_id: market_data.ft_token_id,
+                price: market_data.price,
+                bids: None,
+                started_at: None,
+                ended_at: None,
+                end_price: None,
+                accept_nft_contract_id: None,
+                accept_token_id: None,
+                is_auction: None,
+            })
+        } else if let Some(market_data) = self.market.get(&contract_and_token_id) {
+            self.market.remove(&contract_and_token_id);
 
-        if let Some(market) = market_data {
-            let mut by_owner_id = self.by_owner_id.get(&market.owner_id).expect("No sale by owner_id");
-            by_owner_id.remove(&contract_and_token_id);
-            if by_owner_id.is_empty() {
-                self.by_owner_id.remove(&market.owner_id);
-            } else {
-                self.by_owner_id.insert(&market.owner_id, &by_owner_id);
-            }
-
-            // refund the bids
-            if let Some(ref bids) = market.bids {
+            if let Some(ref bids) = market_data.bids {
                 for bid in bids {
                     Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
                 }
-            }
-            Some(market)
+            };
+
+            Some(market_data)
         } else {
             None
+        };
+
+        if market_data.is_none() {
+            return None
         }
+
+        let market_data: MarketData = market_data.unwrap();
+
+        let mut by_owner_id = self.by_owner_id.get(&market_data.owner_id).expect("No sale by owner_id");
+        by_owner_id.remove(&contract_and_token_id);
+        if by_owner_id.is_empty() {
+            self.by_owner_id.remove(&market_data.owner_id);
+        } else {
+            self.by_owner_id.insert(&market_data.owner_id, &by_owner_id);
+        }
+
+        Some(market_data)
     }
 
     #[payable]
@@ -1142,7 +1205,30 @@ impl Contract {
     ) {
         assert_one_yocto();
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
-        let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist ");
+
+        let market_data: Option<MarketData> = if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
+            Some(MarketData {
+                owner_id: market_data.owner_id,
+                approval_id: market_data.approval_id,
+                nft_contract_id: market_data.nft_contract_id,
+                token_id: market_data.token_id,
+                ft_token_id: market_data.ft_token_id,
+                price: market_data.price,
+                bids: None,
+                started_at: None,
+                ended_at: None,
+                end_price: None,
+                accept_nft_contract_id: None,
+                accept_token_id: None,
+                is_auction: None,
+            })
+        } else if let Some(market_data) = self.market.get(&contract_and_token_id) {
+            Some(market_data)
+        } else {
+            None
+        };
+
+        let market_data: MarketData = market_data.expect("Paras: Market data does not exist");
 
         assert!(
             [market_data.owner_id.clone(), self.owner_id.clone()].contains(&env::predecessor_account_id()),
@@ -1150,7 +1236,7 @@ impl Contract {
         );
 
         self.internal_delete_market_data(nft_contract_id.as_ref(), &token_id);
-        // what about the approval_id?
+
         env::log(
             json!({
                 "type": "delete_market_data",
@@ -1217,7 +1303,29 @@ impl Contract {
         token_id: TokenId,
     ) -> MarketDataJson {
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
-        let market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist ");
+        let market_data: Option<MarketData> = if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
+            Some(MarketData {
+                owner_id: market_data.owner_id,
+                approval_id: market_data.approval_id,
+                nft_contract_id: market_data.nft_contract_id,
+                token_id: market_data.token_id,
+                ft_token_id: market_data.ft_token_id,
+                price: market_data.price,
+                bids: None,
+                started_at: None,
+                ended_at: None,
+                end_price: None,
+                accept_nft_contract_id: None,
+                accept_token_id: None,
+                is_auction: None,
+            })
+        } else if let Some(market_data) = self.market.get(&contract_and_token_id) {
+            Some(market_data)
+        } else {
+            None
+        };
+
+        let market_data = market_data.expect("Paras: Market data does not exist");
 
         let mut price = market_data.price;
 
@@ -1562,7 +1670,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Paras: Token id does not exist")]
+    #[should_panic(expected = "Paras: Market data does not exist")]
     fn test_delete_market_data() {
         let (mut context, mut contract) = setup_contract();
 

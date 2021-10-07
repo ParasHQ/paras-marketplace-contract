@@ -76,11 +76,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
 
             assert!(price.is_some(), "Paras: price not specified");
 
-            let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
-            let current_market_data = self.market.get(&contract_and_token_id);
-            if current_market_data.is_some() {
-                self.internal_delete_market_data(&nft_contract_id, &token_id);
-            }
+            self.internal_delete_market_data(&nft_contract_id, &token_id);
     
             let storage_amount = self.storage_minimum_balance().0;
             let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
