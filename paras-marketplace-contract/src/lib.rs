@@ -673,7 +673,7 @@ impl Contract {
     pub fn get_offer(
         &self,
         nft_contract_id: ValidAccountId,
-        account_id: ValidAccountId,
+        buyer_id: ValidAccountId,
         token_id: Option<TokenId>,
         token_series_id: Option<String>
     ) -> OfferDataJson {
@@ -683,7 +683,7 @@ impl Contract {
             token_series_id.as_ref().unwrap()
         };
 
-        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, account_id, DELIMETER, token);
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, buyer_id, DELIMETER, token);
         let offer_data = self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
 
         if token_id.is_some() {
