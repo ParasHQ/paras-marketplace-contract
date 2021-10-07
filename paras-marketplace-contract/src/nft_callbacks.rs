@@ -130,7 +130,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         }
         else if market_type == "accept_offer_paras_series" {
             assert!(account_id.is_some(), "Paras: Account id is not specified");
-            assert_eq!(nft_contract_id, self.paras_nft_contract, "Paras: accepting offer series for Paras NFT only");
+            assert!(self.paras_nft_contracts.contains(&nft_contract_id), "Paras: accepting offer series for Paras NFT only");
 
             self.internal_accept_offer_series(
                 nft_contract_id,

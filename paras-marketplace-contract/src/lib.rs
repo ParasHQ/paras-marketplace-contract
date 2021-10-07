@@ -118,7 +118,7 @@ pub struct Contract {
     pub storage_deposits: LookupMap<AccountId, Balance>,
     pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
     pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
-    pub paras_nft_contract: AccountId,
+    pub paras_nft_contracts: UnorderedSet<AccountId>,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -130,6 +130,7 @@ pub enum StorageKey {
     ByOwnerId,
     ByOwnerIdInner { account_id_hash: CryptoHash },
     Offers,
+    ParasNFTContractIds,
 }
 
 #[near_bindgen]
@@ -140,7 +141,7 @@ impl Contract {
         treasury_id: ValidAccountId,
         approved_ft_token_ids: Option<Vec<ValidAccountId>>,
         approved_nft_contract_ids: Option<Vec<ValidAccountId>>,
-        paras_nft_contract: ValidAccountId,
+        paras_nft_contracts: Option<Vec<ValidAccountId>>,
     ) -> Self {
         let mut this = Self {
             owner_id: owner_id.into(),
@@ -151,7 +152,7 @@ impl Contract {
             storage_deposits: LookupMap::new(StorageKey::StorageDeposits),
             by_owner_id: LookupMap::new(StorageKey::ByOwnerId),
             offers: UnorderedMap::new(StorageKey::Offers),
-            paras_nft_contract: paras_nft_contract.into(),
+            paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIds),
         };
 
         this.approved_ft_token_ids.insert(&"near".to_string());
@@ -168,11 +169,17 @@ impl Contract {
             }
         }
 
+        if let Some(paras_nft_contracts) = paras_nft_contracts {
+            for paras_nft_contract in paras_nft_contracts {
+                this.paras_nft_contracts.insert(paras_nft_contract.as_ref());
+            }
+        }
+
         this
     }
 
     #[init(ignore_state)]
-    pub fn migrate(paras_nft_contract: ValidAccountId) -> Self {
+    pub fn migrate(paras_nft_contracts: Option<Vec<ValidAccountId>>) -> Self {
         let prev: ContractV1 = env::state_read().expect("ERR_NOT_INITIALIZED");
         assert_eq!(
             env::predecessor_account_id(),
@@ -180,7 +187,7 @@ impl Contract {
             "Paras: Only owner"
         );
 
-        Contract {
+        let mut this = Contract {
             owner_id: prev.owner_id,
             treasury_id: prev.treasury_id,
             market: prev.market,
@@ -189,8 +196,16 @@ impl Contract {
             storage_deposits: prev.storage_deposits,
             by_owner_id: prev.by_owner_id,
             offers: UnorderedMap::new(StorageKey::Offers),
-            paras_nft_contract: paras_nft_contract.into(),
+            paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIds), 
+        };
+
+        if let Some(paras_nft_contracts) = paras_nft_contracts {
+            for paras_nft_contract in paras_nft_contracts {
+                this.paras_nft_contracts.insert(paras_nft_contract.as_ref());
+            }
         }
+
+        this
     }
 
     // Changing treasury & ownership
@@ -481,7 +496,7 @@ impl Contract {
         let token = if token_id.is_some() {
             token_id.as_ref().unwrap().to_string()
         } else {
-            assert_eq!(nft_contract_id.to_string(), self.paras_nft_contract, "Paras: offer series for Paras NFT only");
+            assert!(self.paras_nft_contracts.contains(&nft_contract_id.to_string()), "Paras: offer series for Paras NFT only");
             token_series_id.as_ref().unwrap().to_string()
         };
 
@@ -1320,7 +1335,7 @@ mod tests {
             accounts(1),
             None,
             Some(vec![accounts(2)]),
-            accounts(2)
+            Some(vec![accounts(2)])
         );
         (context, contract)
     }
@@ -1334,7 +1349,7 @@ mod tests {
             accounts(1),
             None,
             Some(vec![accounts(2)]),
-            accounts(2)
+            Some(vec![accounts(2)]),
         );
         testing_env!(context.is_view(true).build());
         assert_eq!(contract.get_owner(), accounts(0).to_string());
