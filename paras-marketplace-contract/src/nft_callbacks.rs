@@ -11,7 +11,15 @@ pub struct MarketArgs {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ft_token_id: Option<AccountId>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub account_id: Option<AccountId>,
+    pub account_id: Option<AccountId>, // offer
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_price: Option<U128>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<U64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<U64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_auction: Option<bool>,
 }
 
 trait NonFungibleTokenApprovalsReceiver {
@@ -53,8 +61,16 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             "Paras: nft_contract_id is not approved"
         );
 
-        let MarketArgs { market_type, price, ft_token_id , account_id} =
-            near_sdk::serde_json::from_str(&msg).expect("Not valid MarketArgs");
+        let MarketArgs { 
+            market_type, 
+            price, 
+            ft_token_id, 
+            account_id,
+            started_at,
+            ended_at,
+            end_price,
+            is_auction
+        } = near_sdk::serde_json::from_str(&msg).expect("Not valid MarketArgs");
 
         if market_type == "sale" {
 
@@ -94,7 +110,10 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 nft_contract_id, 
                 token_id, 
                 ft_token_id_res, 
-                price.unwrap()
+                price.unwrap(),
+                started_at,
+                ended_at,
+                is_auction
             );
         }
         else if market_type == "accept_offer" {

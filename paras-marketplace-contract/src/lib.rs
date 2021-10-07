@@ -35,6 +35,15 @@ pub enum MarketType {
     Trade,
 }
 
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Bid {
+    pub bidder_id: AccountId,
+    pub price: U128,
+}
+
+pub type Bids = Vec<Bid>; 
+
 const DELIMETER: &str = "||";
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -45,7 +54,12 @@ pub struct MarketData {
     pub nft_contract_id: String,
     pub token_id: TokenId,
     pub ft_token_id: AccountId, // "near" for NEAR token
-    pub price: u128,
+    pub price: u128, // if auction, price becomes starting price
+    pub bids: Option<Bids>,
+    pub started_at: Option<u64>,
+    pub ended_at: Option<u64>,
+    pub end_price: Option<u128>, // dutch auction
+    pub is_auction: Option<bool>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -79,6 +93,11 @@ pub struct MarketDataJson {
     token_id: TokenId,
     ft_token_id: AccountId, // "near" for NEAR token
     price: U128,
+    bids: Option<Bids>,
+    started_at: Option<U64>,
+    ended_at: Option<U64>,
+    end_price: Option<U128>, // dutch auction
+    is_auction: Option<bool>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -262,10 +281,19 @@ impl Contract {
             "Paras: NEAR support only"
         );
 
+        if let Some(auction) = market_data.is_auction {
+            assert_eq!(
+                auction,
+                false,
+                "Paras: the NFT is on auction"
+            );
+        }
+
         self.internal_process_purchase(
             nft_contract_id.into(),
             token_id,
             buyer_id,
+            market_data.price,
         );
     }
 
@@ -274,6 +302,7 @@ impl Contract {
         nft_contract_id: AccountId,
         token_id: TokenId,
         buyer_id: AccountId,
+        price: u128,
     ) -> Promise {
 
         let market_data = self.internal_delete_market_data(&nft_contract_id, &token_id).expect("Paras: Sale does not exist");
@@ -282,7 +311,7 @@ impl Contract {
             buyer_id.clone(),
             token_id,
             Some(market_data.approval_id),
-            Some(U128::from(market_data.price)),
+            Some(U128::from(price)),
             Some(10u32), // max length payout
             &nft_contract_id,
             1,
@@ -291,6 +320,7 @@ impl Contract {
         .then(ext_self::resolve_purchase(
             buyer_id,
             market_data,
+            U128::from(price),
             &env::current_account_id(),
             NO_DEPOSIT,
             GAS_FOR_ROYALTIES,
@@ -302,13 +332,14 @@ impl Contract {
         &mut self,
         buyer_id: AccountId,
         market_data: MarketData,
+        price: U128
     ) -> U128 {
         let payout_option = promise_result_as_success().and_then(|value| {
             // None means a bad payout from bad NFT contract
             near_sdk::serde_json::from_slice::<Payout>(&value)
                 .ok()
                 .and_then(|payout| {
-                    let mut remainder = market_data.price;
+                    let mut remainder = price.0;
                     for &value in payout.values() {
                         remainder = remainder.checked_sub(value.0)?;
                     }
@@ -334,20 +365,20 @@ impl Contract {
                         "nft_contract_id": market_data.nft_contract_id,
                         "token_id": market_data.token_id,
                         "ft_token_id": market_data.ft_token_id,
-                        "price": market_data.price.to_string(),
+                        "price": price,
                         "buyer_id": buyer_id,
                     }
                 })
                 .to_string()
                 .as_bytes(),
             );
-            return market_data.price.into();
+            return price;
         };
 
         // Payout (transfer to royalties and seller)
         if market_data.ft_token_id == "near" {
             // 5% fee for treasury
-            let treasury_fee = market_data.price as u128 * TREASURY_FEE / 10_000u128;
+            let treasury_fee = price.0 * TREASURY_FEE / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
@@ -366,7 +397,7 @@ impl Contract {
                         "nft_contract_id": market_data.nft_contract_id,
                         "token_id": market_data.token_id,
                         "ft_token_id": market_data.ft_token_id,
-                        "price": market_data.price.to_string(),
+                        "price": price,
                         "buyer_id": buyer_id,
                     }
                 })
@@ -374,7 +405,7 @@ impl Contract {
                 .as_bytes(),
             );
 
-            return market_data.price.into();
+            return price;
         } else {
             U128(0)
         }
@@ -761,7 +792,127 @@ impl Contract {
         }
     }
 
+    // Auction bids
+    #[payable]
+    pub fn add_bid(
+        &mut self,
+        nft_contract_id: ValidAccountId,
+        ft_token_id: ValidAccountId,
+        token_id: TokenId,
+        amount: U128
+    ) {
+        let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
+        let mut market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist");
+
+        let bidder_id = env::predecessor_account_id();
+
+        let current_time = env::block_timestamp();
+        if market_data.started_at.is_some() {
+            assert!(current_time >= market_data.started_at.unwrap(), "Paras: Sale has not started yet");
+        }
+
+        if market_data.ended_at.is_some() {
+            assert!(current_time <= market_data.ended_at.unwrap(), "Paras: Sale has ended");
+        }
+
+        assert!(
+            env::attached_deposit() >= amount.into(), 
+            "Paras: attached deposit is less than amount"
+        );
+
+        assert_eq!(
+            ft_token_id.to_string(),
+            "near",
+            "Paras: Only support NEAR"
+        );
+
+        let new_bid = Bid {
+            bidder_id: bidder_id.clone(),
+            price: amount.into()
+        };
+
+        let mut bids = market_data.bids.unwrap_or(Vec::new());
+
+        if !bids.is_empty() {
+            let current_bid = &bids[bids.len()-1];
+
+            assert!(
+                amount.0 > current_bid.price.0,
+                "Paras: Can't pay less than or equal to current bid price: {:?}",
+                current_bid.price
+            );
+
+            assert!(
+                amount.0 > market_data.price,
+                "Paras: Can't pay less than or equal to starting price: {:?}",
+                U128(market_data.price)
+            );
+
+            // refund
+            Promise::new(current_bid.bidder_id.clone()).transfer(current_bid.price.0);
+
+            // always keep 1 bid for now
+            bids.remove(bids.len()-1);
+        } else {
+            assert!(
+                amount.0 > market_data.price,
+                "Paras: Can't pay less than or equal to starting price: {}",
+                market_data.price
+            );
+        }
+
+        bids.push(new_bid);
+        market_data.bids = Some(bids);
+        self.market.insert(&contract_and_token_id, &market_data);
+
+        env::log(
+            json!({
+                "type": "add_bid",
+                "params": {
+                    "bidder_id": bidder_id,
+                    "nft_contract_id": nft_contract_id,
+                    "token_id": token_id,
+                    "ft_token_id": ft_token_id,
+                    "amount": amount,
+                }
+            })
+            .to_string()
+            .as_bytes(),
+        );
+    }
+
+    #[payable]
+    pub fn accept_bid(
+        &mut self,
+        nft_contract_id: ValidAccountId,
+        token_id: TokenId,
+    ) {
+        assert_one_yocto();
+        let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
+        let mut market_data = self.market.get(&contract_and_token_id).expect("Paras: Token id does not exist");
+
+        assert_eq!(
+            market_data.owner_id,
+            env::predecessor_account_id(),
+            "Paras: Only seller can call accept_bid"
+        );
+
+        let mut bids = market_data.bids.unwrap();
+        let selected_bid = bids.remove(bids.len()-1);
+        market_data.bids = Some(bids);
+        self.market.insert(&contract_and_token_id, &market_data);
+
+        self.internal_process_purchase(
+            market_data.nft_contract_id, 
+            token_id, 
+            selected_bid.bidder_id.clone(), 
+            selected_bid.price.clone().0,
+        );
+    }
+
+
     // Market Data functions
+
     #[payable]
     pub fn update_market_data(
         &mut self,
@@ -813,8 +964,39 @@ impl Contract {
         token_id: TokenId,
         ft_token_id: String,
         price: U128,
+        started_at: Option<U64>,
+        ended_at: Option<U64>,
+        is_auction: Option<bool>
     ) {
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+
+        let bids: Option<Bids> = match is_auction {
+            Some(u) => {
+                if u {
+                    Some(Vec::new())
+                }
+                else {
+                    None
+                }
+            },
+            None => None
+        };
+
+
+        let current_time: u64 = env::block_timestamp();
+
+        if started_at.is_some() {
+            assert!(started_at.unwrap().0 >= current_time);
+
+            if ended_at.is_some() {
+                assert!(started_at.unwrap().0 < ended_at.unwrap().0);
+            }
+        }
+
+        if ended_at.is_some() {
+            assert!(ended_at.unwrap().0 >= current_time);
+        }
+
         self.market.insert(
             &contract_and_token_id,
             &MarketData {
@@ -824,6 +1006,17 @@ impl Contract {
                 token_id: token_id.clone(),
                 ft_token_id: ft_token_id.clone(),
                 price: price.into(),
+                bids: None,
+                started_at: match started_at {
+                    Some(x) => Some(x.0),
+                    None => None
+                },
+                ended_at: match ended_at {
+                    Some(x) => Some(x.0),
+                    None => None
+                },
+                end_price: None,
+                is_auction: is_auction
             },
         );
 
@@ -851,6 +1044,9 @@ impl Contract {
                     "token_id": token_id,
                     "ft_token_id": ft_token_id,
                     "price": price,
+                    "started_at": started_at,
+                    "ended_at": ended_at,
+                    "is_auction": is_auction
                 }
             })
             .to_string()
@@ -875,6 +1071,12 @@ impl Contract {
                 self.by_owner_id.insert(&market.owner_id, &by_owner_id);
             }
 
+            // refund the bids
+            if let Some(ref bids) = market.bids {
+                for bid in bids {
+                    Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+                }
+            }
             Some(market)
         } else {
             None
@@ -974,6 +1176,20 @@ impl Contract {
             token_id: market_data.token_id,
             ft_token_id: market_data.ft_token_id, // "near" for NEAR token
             price: market_data.price.into(),
+            bids: market_data.bids,
+            started_at: match market_data.started_at {
+                Some(x) => Some(U64(x)),
+                None => None
+            },
+            ended_at: match market_data.ended_at {
+                Some(x) => Some(U64(x)),
+                None => None
+            },
+            end_price: match market_data.end_price {
+                Some(x) => Some(U128(x)),
+                None => None
+            },
+            is_auction: market_data.is_auction,
         }
     }
 
@@ -1015,6 +1231,7 @@ trait ExtSelf {
         &mut self,
         buyer_id: AccountId,
         market_data: MarketData,
+        price: U128,
     ) -> Promise;
 
     fn resolve_offer(
@@ -1181,7 +1398,10 @@ mod tests {
             accounts(2).to_string(),
             "1:1".to_string(),
             "near".to_string(),
-            U128::from(1 * 10u128.pow(24))
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            None
         );
 
         let market = contract.get_market_data(accounts(2), "1:1".to_string());
@@ -1210,7 +1430,10 @@ mod tests {
             accounts(2).to_string(),
             "1:1".to_string(),
             "near".to_string(),
-            U128::from(1 * 10u128.pow(24))
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            None
         );
 
         testing_env!(context
@@ -1242,7 +1465,10 @@ mod tests {
             accounts(2).to_string(),
             "1:1".to_string(),
             "near".to_string(),
-            U128::from(1 * 10u128.pow(24))
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            None,
         );
 
         testing_env!(context
@@ -1279,7 +1505,10 @@ mod tests {
             accounts(2).to_string(),
             "1:1".to_string(),
             "near".to_string(),
-            U128::from(1 * 10u128.pow(24))
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            None
         );
 
         testing_env!(context
@@ -1389,5 +1618,121 @@ mod tests {
             Some("1:1".to_string()),
             None
         );
+    }
+
+    #[test]
+    fn test_internal_add_market_data_auction() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .build()
+        );
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2).to_string(),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            Some(true)
+        );
+
+        let market = contract.get_market_data(accounts(2), "1:1".to_string());
+        assert_eq!(market.is_auction, Some(true));
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: the NFT is on auction")]
+    fn test_bid_invalid_purchase(){
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .build()
+        );
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2).to_string(),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            Some(true),
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(1))
+            .attached_deposit(10u128.pow(24))
+            .build()
+        );
+
+        contract.buy(
+            accounts(2),
+            "1:1".to_string()
+        );
+    }
+
+    #[test]
+    fn test_add_bid_and_accept() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .build()
+        );
+
+        contract.internal_add_market_data(
+            accounts(0),
+            1,
+            accounts(2).to_string(),
+            "1:1".to_string(),
+            "near".to_string(),
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            Some(true),
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(1))
+            .attached_deposit(10u128.pow(24) + 1)
+            .build()
+        );
+
+        contract.add_bid(
+            accounts(2),
+            ValidAccountId::try_from("near").unwrap(),
+            "1:1".to_string(),
+            U128::from(10u128.pow(24) + 1)
+        );
+
+
+        testing_env!(context
+            .predecessor_account_id(accounts(4))
+            .attached_deposit(10u128.pow(24) + 2)
+            .build()
+        );
+
+        contract.add_bid(
+            accounts(2),
+            ValidAccountId::try_from("near").unwrap(),
+            "1:1".to_string(),
+            U128::from(10u128.pow(24) + 2)
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.accept_bid(accounts(2), "1:1".to_string());
     }
 }
