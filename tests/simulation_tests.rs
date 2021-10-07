@@ -232,7 +232,7 @@ fn test_accept_offer() {
 
     // chandra accept bid and nft_approve to marketplace
     let msg = &json!(
-        {"market_type":"accept_offer","account_id": bob.account_id}).to_string();
+        {"market_type":"accept_offer","buyer_id": bob.account_id}).to_string();
 
     chandra.call(
         nft.account_id(),
