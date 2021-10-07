@@ -721,7 +721,7 @@ impl Contract {
 
         ext_contract::nft_transfer_payout(
             offer_data.buyer_id.clone(),
-            token_id,
+            token_id.clone(),
             Some(approval_id),
             Some(U128::from(offer_data.price)),
             Some(10u32), // max length payout
@@ -732,6 +732,7 @@ impl Contract {
         .then(ext_self::resolve_offer(
             seller_id,
             offer_data,
+            token_id,
             &env::current_account_id(),
             NO_DEPOSIT,
             GAS_FOR_ROYALTIES,
@@ -761,7 +762,7 @@ impl Contract {
 
         ext_contract::nft_transfer_payout(
             offer_data.buyer_id.clone(),
-            token_id,
+            token_id.clone(),
             Some(approval_id),
             Some(U128::from(offer_data.price)),
             Some(10u32), // max length payout
@@ -772,6 +773,7 @@ impl Contract {
             .then(ext_self::resolve_offer(
                 seller_id,
                 offer_data,
+                token_id,
                 &env::current_account_id(),
                 NO_DEPOSIT,
                 GAS_FOR_ROYALTIES,
@@ -782,7 +784,8 @@ impl Contract {
     pub fn resolve_offer(
         &mut self,
         seller_id: AccountId,
-        offer_data: OfferData
+        offer_data: OfferData,
+        token_id: TokenId,
     ) -> U128 {
         let payout_option = promise_result_as_success().and_then(|value| {
             // None means a bad payout from bad NFT contract
@@ -813,14 +816,16 @@ impl Contract {
                     "params": {
                         "owner_id": seller_id,
                         "nft_contract_id": offer_data.nft_contract_id,
-                        "token_id": offer_data.token_id,
+                        "token_id": token_id,
+                        "token_series_id": offer_data.token_series_id,
                         "ft_token_id": offer_data.ft_token_id,
                         "price": offer_data.price.to_string(),
                         "buyer_id": offer_data.buyer_id,
+                        "is_offer": true,
                     }
                 })
-                    .to_string()
-                    .as_bytes(),
+                .to_string()
+                .as_bytes(),
             );
             return offer_data.price.into();
         };
@@ -844,14 +849,16 @@ impl Contract {
                     "params": {
                         "owner_id": seller_id,
                         "nft_contract_id": offer_data.nft_contract_id,
-                        "token_id": offer_data.token_id,
+                        "token_id": token_id,
+                        "token_series_id": offer_data.token_series_id,
                         "ft_token_id": offer_data.ft_token_id,
                         "price": offer_data.price.to_string(),
                         "buyer_id": offer_data.buyer_id,
+                        "is_offer": true,
                     }
                 })
-                    .to_string()
-                    .as_bytes(),
+                .to_string()
+                .as_bytes(),
             );
 
             return offer_data.price.into();
@@ -1414,7 +1421,8 @@ trait ExtSelf {
     fn resolve_offer(
         &mut self,
         seller_id: AccountId,
-        offer_data: OfferData
+        offer_data: OfferData,
+        token_id: TokenId
     ) -> Promise;
 }
 
