@@ -706,14 +706,19 @@ impl Contract {
     fn internal_accept_offer(
         &mut self,
         nft_contract_id: AccountId,
-        account_id: AccountId,
+        buyer_id: AccountId,
         token_id: TokenId,
         seller_id: AccountId,
         approval_id: u64,
     ) -> Promise {
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, buyer_id, DELIMETER, token_id);
+        let offer_data = self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
+
+        assert_eq!(offer_data.token_id.as_ref().unwrap(), &token_id);
+
         let offer_data = self.internal_delete_offer(
             nft_contract_id.clone().into(),
-            account_id.clone(),
+            buyer_id.clone(),
             token_id.clone()
         ).expect("Paras: Offer does not exist");
 
@@ -752,7 +757,12 @@ impl Contract {
         let mut token_id_iter = token_id.split(":");
         let token_series_id: String = token_id_iter.next().unwrap().parse().unwrap();
 
-        let offer_data = self.internal_delete_offer(
+        let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, buyer_id, DELIMETER, token_series_id);
+        let offer_data = self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
+
+        assert_eq!(offer_data.token_series_id.as_ref().unwrap(), &token_series_id);
+
+        self.internal_delete_offer(
             nft_contract_id.clone().into(),
             buyer_id.clone(),
             token_series_id.clone()
