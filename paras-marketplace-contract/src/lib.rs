@@ -622,12 +622,14 @@ impl Contract {
         };
     }
 
+    #[payable]
     pub fn delete_offer(
         &mut self,
         nft_contract_id: ValidAccountId,
         token_id: Option<TokenId>,
         token_series_id: Option<String>
     ) {
+        assert_one_yocto();
         let token = if token_id.is_some() {
             token_id.as_ref().unwrap().to_string()
         } else {
@@ -1803,6 +1805,12 @@ mod tests {
             "near".to_string(),
             U128(one_near),
             accounts(0).to_string()
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
         );
 
         contract.delete_offer(
