@@ -56,7 +56,7 @@ View call: dev-1633509841439-11593553362203.get_offer({"nft_contract_id":"dev-16
 ## NFT accept offer
 ```
 $ near call --accountId gnaor.testnet  dev-1633337760334-37276932331579  nft_approve '{"token_id":"1:12","account_id":"dev-1633509841439-11593553362203","msg":"{\"market_type\":\"accept_offer\",\"account_id\":\"cymac.testnet\"}"}' --depositYocto 440000000000000000000 --gas 300000000000000
-Scheduling a call: dev-1633337760334-37276932331579.nft_approve({"token_id":"1:12","account_id":"dev-1633509841439-11593553362203","msg":"{\"market_type\":\"accept_offer\",\"account_id\":\"cymac.testnet\"}"}) with attached 0.00044 NEAR
+Scheduling a call: dev-1633337760334-37276932331579.nft_approve({"token_id":"1:12","account_id":"dev-1633509841439-11593553362203","msg":"{\"market_type\":\"accept_offer\",\"buyer_id\":\"cymac.testnet\"}"}) with attached 0.00044 NEAR
 Receipt: 8yAsQodQDbG7U5VrsYt56K34KNMtycDyA6j9MvSoizgt
 Log [dev-1633337760334-37276932331579]: Transfer 1:12 from dev-1633509841439-11593553362203 to cymac.testnet
 Log [dev-1633337760334-37276932331579]: {"type":"nft_transfer","params":{"token_id":"1:12","sender_id":"gnaor.testnet","receiver_id":"cymac.testnet"}}
@@ -70,7 +70,7 @@ https://explorer.testnet.near.org/transactions/mhfKCh6RxGSwcAohEwMZC2VUv3kteqoGf
 ## NFT accept offer Paras series NFT
 ```
 $ near call --accountId gnaor.testnet dev-1633337760334-37276932331579 nft_approve '{"token_id":"1:15","account_id":"dev-1633354630145-57340825824805","msg":"{\"market_type\":\"accept_offer_paras_series\",\"account_id\":\"cymac.testnet\"}"}' --depositYocto 440000000000000000000 --gas 300000000000000
-Scheduling a call: dev-1633337760334-37276932331579.nft_approve({"token_id":"1:15","account_id":"dev-1633354630145-57340825824805","msg":"{\"market_type\":\"accept_offer_paras_series\",\"account_id\":\"cymac.testnet\"}"}) with attached 0.00044 NEAR
+Scheduling a call: dev-1633337760334-37276932331579.nft_approve({"token_id":"1:15","account_id":"dev-1633354630145-57340825824805","msg":"{\"market_type\":\"accept_offer_paras_series\",\"buyer_id\":\"cymac.testnet\"}"}) with attached 0.00044 NEAR
 Retrying request to broadcast_tx_commit as it has timed out [
 'DQAAAGduYW9yLnRlc3RuZXQA1ppnEtFtCLv528lk5cawPJOIuphC0tVOpkvnRGSqibhrAQAAAAAAACAAAABkZXYtMTYzMzMzNzc2MDMzNC0zNzI3NjkzMjMzMTU3Obb0KrkP+AwBHel56Ao9MpMYauNvHHnXDoUALG5jno5ZAQAAAAILAAAAbmZ0X2FwcHJvdmWcAAAAeyJ0b2tlbl9pZCI6IjE6MTUiLCJhY2NvdW50X2lkIjoiZGV2LTE2MzMzNTQ2MzAxNDUtNTczNDA4MjU4MjQ4MDUiLCJtc2ciOiJ7XCJtYXJrZXRfdHlwZVwiOlwiYWNjZXB0X29mZmVyX3BhcmFzX3Nlcmllc1wiLFwiYWNjb3VudF9pZFwiOlwiY3ltYWMudGVzdG5ldFwifSJ9AMBuMdkQAQAAAOCzxwQ62hcAAAAAAAAAAP1iAMGljBH81cqnlrJhuKfTdC5kKbgsJOAupMt6wqK2WfCUQ6fXVkz7YOqVpICcrBZ4iRqOdybfBpILa3D5yAU='
 ]

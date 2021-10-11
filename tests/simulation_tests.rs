@@ -232,7 +232,67 @@ fn test_accept_offer() {
 
     // chandra accept bid and nft_approve to marketplace
     let msg = &json!(
-        {"market_type":"accept_offer","buyer_id": bob.account_id}).to_string();
+        {"market_type":"accept_offer","buyer_id": bob.account_id, "price": U128(10u128.pow(24))}).to_string();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": format!("{}:{}", "1", "1"),
+            "account_id": marketplace.valid_account_id(),
+            "msg": msg,
+        }).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_APPROVE,
+    ).assert_success();
+
+    let token: Token = nft.view(
+        nft.account_id(),
+        "nft_token",
+        &json!({
+            "token_id": "1:1"
+        }).to_string().into_bytes()
+    ).unwrap_json();
+
+    assert_eq!(token.owner_id, bob.account_id());
+}
+
+#[test]
+fn test_accept_offer_paras_series() {
+    let (marketplace, nft, _, alice, bob, chandra, _) = init();
+
+    //owner marketplace and nft-> alice
+    //seller -> bob
+    //buyer -> chandra
+    //treasury -> treasury
+    //royalty to 10 different account
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+
+    bob.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    ).assert_success();
+
+    bob.call(
+        marketplace.account_id(),
+        "add_offer",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_series_id": "1",
+            "ft_token_id": "near",
+            "price": U128(10u128.pow(24)),
+        }).to_string().into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    // chandra accept bid and nft_approve to marketplace
+    let msg = &json!(
+        {"market_type":"accept_offer_paras_series","buyer_id": bob.account_id, "price": U128(10u128.pow(24))}).to_string();
 
     chandra.call(
         nft.account_id(),

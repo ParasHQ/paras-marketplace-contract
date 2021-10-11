@@ -115,25 +115,29 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         }
         else if market_type == "accept_offer" {
             assert!(buyer_id.is_some(), "Paras: Account id is not specified");
+            assert!(price.is_some(), "Paras: Price is not specified (for check)");
 
             self.internal_accept_offer(
                 nft_contract_id,
                 buyer_id.unwrap(),
                 token_id,
                 owner_id.to_string(),
-                approval_id
+                approval_id,
+                price.unwrap().0,
             );
         }
         else if market_type == "accept_offer_paras_series" {
             assert!(buyer_id.is_some(), "Paras: Account id is not specified");
             assert!(self.paras_nft_contracts.contains(&nft_contract_id), "Paras: accepting offer series for Paras NFT only");
+            assert!(price.is_some(), "Paras: Price is not specified (for check)");
 
             self.internal_accept_offer_series(
                 nft_contract_id,
                 buyer_id.unwrap(),
                 token_id,
                 owner_id.to_string(),
-                approval_id
+                approval_id,
+                price.unwrap().0,
             );
         }
     }

@@ -712,11 +712,13 @@ impl Contract {
         token_id: TokenId,
         seller_id: AccountId,
         approval_id: u64,
+        price: u128,
     ) -> Promise {
         let contract_account_id_token_id = format!("{}{}{}{}{}", nft_contract_id, DELIMETER, buyer_id, DELIMETER, token_id);
         let offer_data = self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
 
         assert_eq!(offer_data.token_id.as_ref().unwrap(), &token_id);
+        assert_eq!(offer_data.price, price);
 
         let offer_data = self.internal_delete_offer(
             nft_contract_id.clone().into(),
@@ -753,6 +755,7 @@ impl Contract {
         token_id: TokenId,
         seller_id: AccountId,
         approval_id: u64,
+        price: u128,
     ) -> Promise {
         // Token delimiter : is specific for Paras NFT
 
@@ -763,6 +766,7 @@ impl Contract {
         let offer_data = self.offers.get(&contract_account_id_token_id).expect("Paras: Offer does not exist");
 
         assert_eq!(offer_data.token_series_id.as_ref().unwrap(), &token_series_id);
+        assert_eq!(offer_data.price, price);
 
         self.internal_delete_offer(
             nft_contract_id.clone().into(),
