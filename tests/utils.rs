@@ -17,7 +17,7 @@ pub const STORAGE_CREATE_SERIES_ESTIMATE: u128 = 8540000000000000000000;
 // After calculation
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
 pub const STORAGE_APPROVE: u128 = 760000000000000000000;
-pub const GAS_BUY: u64 = 90 * 10u64.pow(12);
+pub const GAS_BUY: u64 = 100 * 10u64.pow(12);
 
 pub fn create_nft_and_mint_one(
     nft: &UserAccount, 
@@ -164,6 +164,7 @@ pub fn init() -> (
             alice.valid_account_id(),
             treasury.valid_account_id(),
             None,
+            Some(vec!(nft_contract.valid_account_id())),
             Some(vec!(nft_contract.valid_account_id()))
         )
     );
