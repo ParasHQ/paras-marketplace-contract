@@ -261,6 +261,20 @@ impl Contract {
         }
     }
 
+    // Approved paras contracts
+    #[payable]
+    pub fn add_approved_paras_nft_contract_ids(&mut self, nft_contract_ids: Vec<ValidAccountId>) {
+        assert_one_yocto();
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "Paras: Owner only"
+        );
+        for nft_contract_id in nft_contract_ids {
+            self.paras_nft_contracts.insert(nft_contract_id.as_ref());
+        }
+    }
+
     #[payable]
     pub fn add_approved_ft_token_ids(
         &mut self,
