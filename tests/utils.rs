@@ -6,11 +6,13 @@ use paras_marketplace_contract::ContractContract as MarketplaceContract;
 
 near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
     NFT_WASM_BYTES => "out/paras_nft_contract.wasm",
+    FT_WASM_BYTES => "out/fungible_token.wasm",
     MARKETPLACE_WASM_BYTES => "out/main.wasm",
 }
 
 pub const DEFAULT_GAS: u64 = near_sdk_sim::DEFAULT_GAS;
 pub const NFT_ID_STR: &str = "nft";
+pub const FT_ID_STR: &str = "fttoken";
 
 pub const STORAGE_MINT_ESTIMATE: u128 = 11280000000000000000000;
 pub const STORAGE_CREATE_SERIES_ESTIMATE: u128 = 8540000000000000000000;
@@ -149,6 +151,25 @@ pub fn init() -> (
         chandra,
         root,
     )
+}
+
+pub fn init_ft(root: &UserAccount) -> UserAccount {
+    let ft_account_id = AccountId::new_unchecked(FT_ID_STR.to_string());
+    let ft_contract = root.deploy(&FT_WASM_BYTES, ft_account_id.clone(), STORAGE_AMOUNT);
+
+    ft_contract.call(
+        ft_account_id,
+        "new_paras_meta",
+        &json!({
+            "owner_id": account_o()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        0,
+    );
+
+    return ft_contract;
 }
 
 pub fn account_o() -> AccountId {
