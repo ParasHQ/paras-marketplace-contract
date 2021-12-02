@@ -12,10 +12,5 @@ trait ExtContract {
         balance: Option<U128>,
         max_len_payout: Option<u32>,
     );
-    fn nft_transfer(
-        &mut self,
-        receiver_id: AccountId,
-        token_id: TokenId,
-        approval_id: u64,
-    );
+    fn nft_transfer(&mut self, receiver_id: AccountId, token_id: TokenId, approval_id: u64);
 }
