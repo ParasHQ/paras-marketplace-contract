@@ -13,6 +13,7 @@ use crate::external::*;
 
 mod external;
 mod nft_callbacks;
+mod ft_callbacks;
 
 const GAS_FOR_NFT_TRANSFER: Gas = Gas(20_000_000_000_000);
 const BASE_GAS: Gas = Gas(5_000_000_000_000);
@@ -251,11 +252,7 @@ impl Contract {
     }
 
     // Buy & Payment
-
-    #[payable]
-    pub fn buy(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
-        let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
-        let market_data: Option<MarketData> =
+    fn internal_get_market_data(&self, contract_and_token_id: String) -> Option<MarketData>  {
             if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
                 Some(MarketData {
                     owner_id: market_data.owner_id,
@@ -275,10 +272,15 @@ impl Contract {
             } else if let Some(market_data) = self.market.get(&contract_and_token_id) {
                 Some(market_data)
             } else {
-                env::panic_str(&"Paras: Market data does not exist");
-            };
+                None
+            }
+    }
 
-        let market_data: MarketData = market_data.expect("Paras: Market data does not exist");
+    #[payable]
+    pub fn buy(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
+        let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
+
+        let market_data: MarketData = self.internal_get_market_data(contract_and_token_id).expect("Paras: Market data does not exist");
 
         let buyer_id = env::predecessor_account_id();
 
@@ -287,7 +289,6 @@ impl Contract {
             "Paras: Cannot buy your own sale"
         );
 
-        // only NEAR supported for now
         assert_eq!(
             market_data.ft_token_id.to_string(),
             NEAR,
@@ -1439,6 +1440,7 @@ fn make_triple(nft_contract_id: &AccountId, buyer_id: &AccountId, token: &str) -
         nft_contract_id, DELIMETER, buyer_id, DELIMETER, token
     )
 }
+
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
