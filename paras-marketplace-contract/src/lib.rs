@@ -22,10 +22,19 @@ const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05
 
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
 
-pub type Payout = HashMap<AccountId, U128>;
+near_sdk::setup_alloc!();
+
+pub type PayoutHashMap = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
 pub type ContractAccountIdTokenId = String;
 pub type TokenId = String;
+
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Payout {
+    pub payout: PayoutHashMap
+}
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -366,20 +375,36 @@ impl Contract {
         price: U128,
     ) -> U128 {
         let payout_option = promise_result_as_success().and_then(|value| {
-            // None means a bad payout from bad NFT contract
-            near_sdk::serde_json::from_slice::<Payout>(&value)
-                .ok()
-                .and_then(|payout| {
-                    let mut remainder = price.0;
-                    for &value in payout.values() {
-                        remainder = remainder.checked_sub(value.0)?;
-                    }
-                    if remainder == 0 || remainder == 1 {
-                        Some(payout)
-                    } else {
-                        None
-                    }
-                })
+            let parsed_payout = near_sdk::serde_json::from_slice::<PayoutHashMap>(&value);
+            if parsed_payout.is_err() {
+                near_sdk::serde_json::from_slice::<Payout>(&value).
+                    ok().
+                    and_then(|payout| {
+                        let mut remainder = price.0;
+                        for &value in payout.payout.values() {
+                            remainder = remainder.checked_sub(value.0)?;
+                        }
+                        if remainder == 0 || remainder == 1 {
+                            Some(payout.payout)
+                        } else {
+                            None
+                        }
+                    })
+            } else {
+                parsed_payout
+                    .ok()
+                    .and_then(|payout| {
+                        let mut remainder = price.0;
+                        for &value in payout.values() {
+                            remainder = remainder.checked_sub(value.0)?;
+                        }
+                        if remainder == 0 || remainder == 1 {
+                            Some(payout)
+                        } else {
+                            None
+                        }
+                    })
+            }
         });
         let payout = if let Some(payout_option) = payout_option {
             payout_option
@@ -795,20 +820,38 @@ impl Contract {
     ) -> U128 {
         let payout_option = promise_result_as_success().and_then(|value| {
             // None means a bad payout from bad NFT contract
-            near_sdk::serde_json::from_slice::<Payout>(&value)
-                .ok()
-                .and_then(|payout| {
-                    let mut remainder = offer_data.price;
-                    for &value in payout.values() {
-                        remainder = remainder.checked_sub(value.0)?;
-                    }
-                    if remainder == 0 || remainder == 1 {
-                        Some(payout)
-                    } else {
-                        None
-                    }
-                })
+            let parsed_payout = near_sdk::serde_json::from_slice::<PayoutHashMap>(&value);
+            if parsed_payout.is_err() {
+                near_sdk::serde_json::from_slice::<Payout>(&value).
+                    ok().
+                    and_then(|payout| {
+                        let mut remainder = offer_data.price;
+                        for &value in payout.payout.values() {
+                            remainder = remainder.checked_sub(value.0)?;
+                        }
+                        if remainder == 0 || remainder == 1 {
+                            Some(payout.payout)
+                        } else {
+                            None
+                        }
+                    })
+            } else {
+                parsed_payout
+                    .ok()
+                    .and_then(|payout| {
+                        let mut remainder = offer_data.price;
+                        for &value in payout.values() {
+                            remainder = remainder.checked_sub(value.0)?;
+                        }
+                        if remainder == 0 || remainder == 1 {
+                            Some(payout)
+                        } else {
+                            None
+                        }
+                    })
+            }
         });
+
         let payout = if let Some(payout_option) = payout_option {
             payout_option
         } else {
