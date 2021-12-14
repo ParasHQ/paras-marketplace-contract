@@ -22,8 +22,6 @@ const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05
 
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
 
-near_sdk::setup_alloc!();
-
 pub type PayoutHashMap = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
 pub type ContractAccountIdTokenId = String;
