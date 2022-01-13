@@ -242,6 +242,7 @@ impl Contract {
         add_accounts(Some(nft_contract_ids), &mut self.approved_nft_contract_ids);
     }
 
+    #[payable]
     pub fn remove_approved_nft_contract_ids(&mut self, nft_contract_ids: Vec<AccountId>) {
         assert_one_yocto();
         self.assert_owner();
