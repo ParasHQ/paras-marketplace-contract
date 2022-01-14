@@ -242,6 +242,13 @@ impl Contract {
         add_accounts(Some(nft_contract_ids), &mut self.approved_nft_contract_ids);
     }
 
+    #[payable]
+    pub fn remove_approved_nft_contract_ids(&mut self, nft_contract_ids: Vec<AccountId>) {
+        assert_one_yocto();
+        self.assert_owner();
+        remove_accounts(Some(nft_contract_ids), &mut self.approved_nft_contract_ids);
+    }
+
     // Approved paras contracts
     #[payable]
     pub fn add_approved_paras_nft_contract_ids(&mut self, nft_contract_ids: Vec<AccountId>) {
@@ -1474,6 +1481,14 @@ fn add_accounts(accounts: Option<Vec<AccountId>>, set: &mut UnorderedSet<Account
     });
 }
 
+fn remove_accounts(accounts: Option<Vec<AccountId>>, set: &mut UnorderedSet<AccountId>) {
+    accounts.map(|ids| {
+        ids.iter().for_each(|id| {
+            set.remove(id);
+        })
+    });
+}
+
 fn make_triple(nft_contract_id: &AccountId, buyer_id: &AccountId, token: &str) -> String {
     format!(
         "{}{}{}{}{}",
@@ -1607,6 +1622,21 @@ mod tests {
         contract.add_approved_nft_contract_ids(vec![accounts(5)]);
         let approved_nfts = contract.approved_nft_contract_ids();
         assert_eq!(approved_nfts, vec![accounts(2), accounts(5)]);
+    }
+
+    #[test]
+    fn test_remove_approved_nft_contract_ids() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build());
+
+        contract.add_approved_nft_contract_ids(vec![accounts(5)]);
+        contract.remove_approved_nft_contract_ids(vec![accounts(5)]);
+        let approved_nfts = contract.approved_nft_contract_ids();
+        assert_eq!(approved_nfts, vec![accounts(2)]);
     }
 
     #[test]
