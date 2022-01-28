@@ -19,7 +19,7 @@ const BASE_GAS: Gas = Gas(5_000_000_000_000);
 const GAS_FOR_ROYALTIES: Gas = Gas(BASE_GAS.0 * 10u64);
 const NO_DEPOSIT: Balance = 0;
 const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05
-const MAX_PRICE: Balance = 999_999_999 * 10u128.pow(24);
+const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
 
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
 
@@ -1653,7 +1653,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Paras: price higher than 999999999000000000000000000000000")]
+    #[should_panic(expected = "Paras: price higher than 1000000000000000000000000000000000")]
     fn test_invalid_price_higher_than_max_price() {
         let (mut context, mut contract) = setup_contract();
 
@@ -1674,7 +1674,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Paras: price higher than 999999999000000000000000000000000")]
+    #[should_panic(expected = "Paras: price higher than 1000000000000000000000000000000000")]
     fn test_invalid_price_higher_than_max_price_update() {
         let (mut context, mut contract) = setup_contract();
 
