@@ -19,6 +19,7 @@ const BASE_GAS: Gas = Gas(5_000_000_000_000);
 const GAS_FOR_ROYALTIES: Gas = Gas(BASE_GAS.0 * 10u64);
 const NO_DEPOSIT: Balance = 0;
 const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05
+const MAX_PRICE: Balance = 999_999_999 * 10u128.pow(24);
 
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
 
@@ -1071,6 +1072,12 @@ impl Contract {
             "Paras: ft_token_id differs"
         ); // sanity check
 
+        assert!(
+            price.0 < MAX_PRICE,
+            "Paras: price higher than {}",
+            MAX_PRICE
+        );
+
         market_data.price = price.into();
         self.market.insert(&contract_and_token_id, &market_data);
 
@@ -1102,6 +1109,7 @@ impl Contract {
         end_price: Option<U128>,
         is_auction: Option<bool>,
     ) {
+
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
 
         let bids: Option<Bids> = match is_auction {
@@ -1135,6 +1143,12 @@ impl Contract {
                 "Paras: End price is more than starting price"
             );
         }
+
+        assert!(
+            price.0 < MAX_PRICE,
+            "Paras: price higher than {}",
+            MAX_PRICE
+        );
 
         self.market.insert(
             &contract_and_token_id,
@@ -1636,6 +1650,60 @@ mod tests {
         assert_eq!(market.owner_id, accounts(3));
         assert_eq!(market.token_id, "1:1".to_string());
         assert_eq!(market.price, U128::from(1 * 10u128.pow(24)));
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: price higher than 999999999000000000000000000000000")]
+    fn test_invalid_price_higher_than_max_price() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context.predecessor_account_id(accounts(0)).build());
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2),
+            "1:1".to_string(),
+            near_account(),
+            U128::from(1_000_000_000 * 10u128.pow(24)),
+            None,
+            None,
+            None,
+            None,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: price higher than 999999999000000000000000000000000")]
+    fn test_invalid_price_higher_than_max_price_update() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context.predecessor_account_id(accounts(0)).build());
+
+        contract.internal_add_market_data(
+            accounts(0),
+            1,
+            accounts(2),
+            "1:1".to_string(),
+            near_account(),
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build());
+
+        contract.update_market_data(
+            accounts(2),
+            "1:1".to_string(),
+            near_account(),
+            U128::from(1_000_000_000 * 10u128.pow(24)),
+        );
     }
 
     #[test]
