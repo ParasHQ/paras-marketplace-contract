@@ -136,7 +136,8 @@ pub fn init() -> (
             treasury.account_id(),
             None,
             Some(vec!(nft_contract.account_id())),
-            Some(vec!(nft_contract.account_id()))
+            Some(vec!(nft_contract.account_id())),
+            500
         )
     );
 

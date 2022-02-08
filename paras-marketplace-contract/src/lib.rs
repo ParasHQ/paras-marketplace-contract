@@ -5,7 +5,7 @@ use near_sdk::promise_result_as_success;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, near_bindgen, serde_json::json, AccountId, Balance,
-    BorshStorageKey, CryptoHash, Gas, PanicOnDefault, Promise,
+    BorshStorageKey, CryptoHash, Gas, PanicOnDefault, Promise, Timestamp
 };
 use std::collections::HashMap;
 
@@ -18,7 +18,7 @@ const GAS_FOR_NFT_TRANSFER: Gas = Gas(20_000_000_000_000);
 const BASE_GAS: Gas = Gas(5_000_000_000_000);
 const GAS_FOR_ROYALTIES: Gas = Gas(BASE_GAS.0 * 10u64);
 const NO_DEPOSIT: Balance = 0;
-const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05
+const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
 
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
 
@@ -26,12 +26,20 @@ pub type PayoutHashMap = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
 pub type ContractAccountIdTokenId = String;
 pub type TokenId = String;
-
+pub type TimestampSec = u32;
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Payout {
     pub payout: PayoutHashMap
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct TransactionFee {
+    pub next_fee: Option<u16>,
+    pub start_time: Option<TimestampSec>,
+    pub current_fee: u16,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -117,15 +125,19 @@ pub struct MarketDataJson {
     is_auction: Option<bool>,
 }
 
+#[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct ContractV1 {
+pub struct ContractV2 {
     pub owner_id: AccountId,
     pub treasury_id: AccountId,
-    pub market: UnorderedMap<ContractAndTokenId, MarketDataV1>,
+    pub old_market: UnorderedMap<ContractAndTokenId, MarketDataV1>,
+    pub market: UnorderedMap<ContractAndTokenId, MarketData>,
     pub approved_ft_token_ids: UnorderedSet<AccountId>,
     pub approved_nft_contract_ids: UnorderedSet<AccountId>,
     pub storage_deposits: LookupMap<AccountId, Balance>,
     pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
+    pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
+    pub paras_nft_contracts: UnorderedSet<AccountId>,
 }
 
 #[near_bindgen]
@@ -141,6 +153,7 @@ pub struct Contract {
     pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
     pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
     pub paras_nft_contracts: UnorderedSet<AccountId>,
+    pub transaction_fee: TransactionFee,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -165,6 +178,7 @@ impl Contract {
         approved_ft_token_ids: Option<Vec<AccountId>>,
         approved_nft_contract_ids: Option<Vec<AccountId>>,
         paras_nft_contracts: Option<Vec<AccountId>>,
+        current_fee: u16,
     ) -> Self {
         let mut this = Self {
             owner_id: owner_id.into(),
@@ -177,6 +191,11 @@ impl Contract {
             by_owner_id: LookupMap::new(StorageKey::ByOwnerId),
             offers: UnorderedMap::new(StorageKey::Offers),
             paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIds),
+            transaction_fee: TransactionFee {
+                next_fee: None,
+                start_time: None,
+                current_fee,
+            }
         };
 
         this.approved_ft_token_ids.insert(&near_account());
@@ -192,18 +211,18 @@ impl Contract {
     }
 
     #[init(ignore_state)]
-    pub fn migrate(paras_nft_contracts: Option<Vec<AccountId>>) -> Self {
-        let prev: ContractV1 = env::state_read().expect("ERR_NOT_INITIALIZED");
+    pub fn migrate(current_fee: u16) -> Self {
+        let prev: ContractV2 = env::state_read().expect("ERR_NOT_INITIALIZED");
         assert_eq!(
             env::predecessor_account_id(),
             prev.owner_id,
             "Paras: Only owner"
         );
 
-        let mut this = Contract {
+        let this = Contract {
             owner_id: prev.owner_id,
             treasury_id: prev.treasury_id,
-            old_market: prev.market,
+            old_market: prev.old_market,
             market: UnorderedMap::new(StorageKey::MarketV2),
             approved_ft_token_ids: prev.approved_ft_token_ids,
             approved_nft_contract_ids: prev.approved_nft_contract_ids,
@@ -211,9 +230,12 @@ impl Contract {
             by_owner_id: prev.by_owner_id,
             offers: UnorderedMap::new(StorageKey::Offers),
             paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIds),
+            transaction_fee: TransactionFee {
+                next_fee: None,
+                start_time: None,
+                current_fee
+            }
         };
-
-        add_accounts(paras_nft_contracts, &mut this.paras_nft_contracts);
 
         this
     }
@@ -225,6 +247,43 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner();
         self.treasury_id = treasury_id;
+    }
+
+    #[payable]
+    pub fn set_transaction_fee(&mut self, next_fee: u16, start_time: Option<TimestampSec>) {
+        assert_one_yocto();
+        self.assert_owner();
+
+        if start_time.is_none() {
+            self.transaction_fee.current_fee = next_fee;
+            self.transaction_fee.next_fee = None;
+            self.transaction_fee.start_time = None;
+            return
+        } else {
+            let start_time: TimestampSec = start_time.unwrap();
+            assert!(
+                start_time > to_sec(env::block_timestamp()),
+                "start_time is less than current block_timestamp"
+            );
+            self.transaction_fee.next_fee = Some(next_fee);
+            self.transaction_fee.start_time = Some(start_time);
+        }
+    }
+
+    pub fn calculate_current_transaction_fee(&mut self) -> u128 {
+        let transaction_fee: &TransactionFee = &self.transaction_fee;
+        if transaction_fee.next_fee.is_some() {
+            if to_sec(env::block_timestamp()) >= transaction_fee.start_time.unwrap() {
+                self.transaction_fee.current_fee = transaction_fee.next_fee.unwrap();
+                self.transaction_fee.next_fee = None;
+                self.transaction_fee.start_time = None;
+            }
+        }
+        self.transaction_fee.current_fee as u128
+    }
+
+    pub fn get_transaction_fee(&self) -> &TransactionFee {
+        &self.transaction_fee
     }
 
     #[payable]
@@ -438,12 +497,14 @@ impl Contract {
         // Payout (transfer to royalties and seller)
         if market_data.ft_token_id == near_account() {
             // 5% fee for treasury
-            let treasury_fee = price.0 * TREASURY_FEE / 10_000u128;
+            let treasury_fee = price.0 * self.calculate_current_transaction_fee() / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
                     Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
-                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    if treasury_fee != 0 {
+                        Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    }
                 } else {
                     Promise::new(receiver_id).transfer(amount.0);
                 }
@@ -886,12 +947,14 @@ impl Contract {
         // Payout (transfer to royalties and seller)
         if offer_data.ft_token_id == near_account() {
             // 5% fee for treasury
-            let treasury_fee = offer_data.price as u128 * TREASURY_FEE / 10_000u128;
+            let treasury_fee = offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
                     Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
-                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    if treasury_fee != 0 {
+                        Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    }
                 } else {
                     Promise::new(receiver_id).transfer(amount.0);
                 }
@@ -1078,6 +1141,12 @@ impl Contract {
             "Paras: ft_token_id differs"
         ); // sanity check
 
+        assert!(
+            price.0 < MAX_PRICE,
+            "Paras: price higher than {}",
+            MAX_PRICE
+        );
+
         market_data.price = price.into();
         self.market.insert(&contract_and_token_id, &market_data);
 
@@ -1109,6 +1178,7 @@ impl Contract {
         end_price: Option<U128>,
         is_auction: Option<bool>,
     ) {
+
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
 
         let bids: Option<Bids> = match is_auction {
@@ -1142,6 +1212,12 @@ impl Contract {
                 "Paras: End price is more than starting price"
             );
         }
+
+        assert!(
+            price.0 < MAX_PRICE,
+            "Paras: price higher than {}",
+            MAX_PRICE
+        );
 
         self.market.insert(
             &contract_and_token_id,
@@ -1448,12 +1524,17 @@ impl Contract {
             "Paras: Owner only"
         )
     }
+
 }
 
 pub fn hash_account_id(account_id: &AccountId) -> CryptoHash {
     let mut hash = CryptoHash::default();
     hash.copy_from_slice(&env::sha256(account_id.as_bytes()));
     hash
+}
+
+pub fn to_sec(timestamp: Timestamp) -> TimestampSec {
+    (timestamp / 10u64.pow(9)) as u32
 }
 
 #[ext_contract(ext_self)]
@@ -1520,6 +1601,7 @@ mod tests {
             None,
             Some(vec![accounts(2)]),
             Some(vec![accounts(2)]),
+            500,
         );
         (context, contract)
     }
@@ -1534,12 +1616,14 @@ mod tests {
             None,
             Some(vec![accounts(2)]),
             Some(vec![accounts(2)]),
+            500,
         );
         testing_env!(context.is_view(true).build());
         assert_eq!(contract.get_owner(), accounts(0));
         assert_eq!(contract.get_treasury(), accounts(1));
         assert_eq!(contract.approved_ft_token_ids(), vec![near_account()]);
         assert_eq!(contract.approved_nft_contract_ids(), vec![accounts(2)]);
+        assert_eq!(contract.transaction_fee.current_fee, 500);
     }
 
     #[test]
@@ -1666,6 +1750,60 @@ mod tests {
         assert_eq!(market.owner_id, accounts(3));
         assert_eq!(market.token_id, "1:1".to_string());
         assert_eq!(market.price, U128::from(1 * 10u128.pow(24)));
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: price higher than 1000000000000000000000000000000000")]
+    fn test_invalid_price_higher_than_max_price() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context.predecessor_account_id(accounts(0)).build());
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2),
+            "1:1".to_string(),
+            near_account(),
+            U128::from(1_000_000_000 * 10u128.pow(24)),
+            None,
+            None,
+            None,
+            None,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: price higher than 1000000000000000000000000000000000")]
+    fn test_invalid_price_higher_than_max_price_update() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context.predecessor_account_id(accounts(0)).build());
+
+        contract.internal_add_market_data(
+            accounts(0),
+            1,
+            accounts(2),
+            "1:1".to_string(),
+            near_account(),
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build());
+
+        contract.update_market_data(
+            accounts(2),
+            "1:1".to_string(),
+            near_account(),
+            U128::from(1_000_000_000 * 10u128.pow(24)),
+        );
     }
 
     #[test]
@@ -1949,5 +2087,55 @@ mod tests {
             .build());
 
         contract.accept_bid(accounts(2), "1:1".to_string());
+    }
+
+    #[test]
+    fn test_change_transaction_fee_immediately() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.set_transaction_fee(100, None);
+
+        assert_eq!(contract.get_transaction_fee().current_fee, 100);
+    }
+
+    #[test]
+    fn test_change_transaction_fee_with_time() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        assert_eq!(contract.get_transaction_fee().current_fee, 500);
+        assert_eq!(contract.get_transaction_fee().next_fee, None);
+        assert_eq!(contract.get_transaction_fee().start_time, None);
+
+        let next_fee: u16 = 100;
+        let start_time: Timestamp = 1618109122863866400;
+        let start_time_sec: TimestampSec = to_sec(start_time);
+        contract.set_transaction_fee(next_fee, Some(start_time_sec));
+
+        assert_eq!(contract.get_transaction_fee().current_fee, 500);
+        assert_eq!(contract.get_transaction_fee().next_fee, Some(next_fee));
+        assert_eq!(contract.get_transaction_fee().start_time, Some(start_time_sec));
+
+        testing_env!(context
+            .predecessor_account_id(accounts(1))
+            .block_timestamp(start_time + 1)
+            .build()
+        );
+
+        contract.calculate_current_transaction_fee();
+        assert_eq!(contract.get_transaction_fee().current_fee, next_fee);
+        assert_eq!(contract.get_transaction_fee().next_fee, None);
+        assert_eq!(contract.get_transaction_fee().start_time, None);
     }
 }
