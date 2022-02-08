@@ -495,7 +495,9 @@ impl Contract {
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
                     Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
-                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    if treasury_fee != 0 {
+                        Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    }
                 } else {
                     Promise::new(receiver_id).transfer(amount.0);
                 }
@@ -943,7 +945,9 @@ impl Contract {
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
                     Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
-                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    if treasury_fee != 0 {
+                        Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    }
                 } else {
                     Promise::new(receiver_id).transfer(amount.0);
                 }
