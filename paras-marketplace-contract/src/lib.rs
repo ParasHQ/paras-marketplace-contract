@@ -125,7 +125,6 @@ pub struct MarketDataJson {
     is_auction: Option<bool>,
 }
 
-#[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct ContractV2 {
     pub owner_id: AccountId,
