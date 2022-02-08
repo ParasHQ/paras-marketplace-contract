@@ -5,7 +5,7 @@ use near_sdk::promise_result_as_success;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, near_bindgen, serde_json::json, AccountId, Balance,
-    BorshStorageKey, CryptoHash, Gas, PanicOnDefault, Promise,
+    BorshStorageKey, CryptoHash, Gas, PanicOnDefault, Promise, Timestamp
 };
 use std::collections::HashMap;
 
@@ -26,7 +26,7 @@ pub type PayoutHashMap = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
 pub type ContractAccountIdTokenId = String;
 pub type TokenId = String;
-
+pub type TimestampSec = u32;
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -38,7 +38,7 @@ pub struct Payout {
 #[serde(crate = "near_sdk::serde")]
 pub struct TransactionFee {
     pub next_fee: Option<u16>,
-    pub start_time: Option<u128>,
+    pub start_time: Option<TimestampSec>,
     pub current_fee: u16,
 }
 
@@ -250,7 +250,7 @@ impl Contract {
     }
 
     #[payable]
-    pub fn set_transaction_fee(&mut self, next_fee: u16, start_time: Option<U128>) {
+    pub fn set_transaction_fee(&mut self, next_fee: u16, start_time: Option<TimestampSec>) {
         assert_one_yocto();
         self.assert_owner();
 
@@ -260,9 +260,9 @@ impl Contract {
             self.transaction_fee.start_time = None;
             return
         } else {
-            let start_time: u128 = start_time.unwrap().0;
+            let start_time: TimestampSec = start_time.unwrap();
             assert!(
-                start_time > env::block_timestamp() as u128,
+                start_time > to_sec(env::block_timestamp()),
                 "start_time is less than current block_timestamp"
             );
             self.transaction_fee.next_fee = Some(next_fee);
@@ -270,12 +270,10 @@ impl Contract {
         }
     }
 
-    fn calculate_current_transaction_fee(&mut self) -> u128 {
+    pub fn calculate_current_transaction_fee(&mut self) -> u128 {
         let transaction_fee: &TransactionFee = &self.transaction_fee;
         if transaction_fee.next_fee.is_some() {
-            let current_time = env::block_timestamp() as u128;
-            let start_time = transaction_fee.start_time.unwrap();
-            if current_time >= start_time {
+            if to_sec(env::block_timestamp()) >= transaction_fee.start_time.unwrap() {
                 self.transaction_fee.current_fee = transaction_fee.next_fee.unwrap();
                 self.transaction_fee.next_fee = None;
                 self.transaction_fee.start_time = None;
@@ -1515,12 +1513,17 @@ impl Contract {
             "Paras: Owner only"
         )
     }
+
 }
 
 pub fn hash_account_id(account_id: &AccountId) -> CryptoHash {
     let mut hash = CryptoHash::default();
     hash.copy_from_slice(&env::sha256(account_id.as_bytes()));
     hash
+}
+
+pub fn to_sec(timestamp: Timestamp) -> TimestampSec {
+    (timestamp / 10u64.pow(9)) as u32
 }
 
 #[ext_contract(ext_self)]
@@ -1579,6 +1582,7 @@ mod tests {
             None,
             Some(vec![accounts(2)]),
             Some(vec![accounts(2)]),
+            500,
         );
         (context, contract)
     }
@@ -1593,12 +1597,14 @@ mod tests {
             None,
             Some(vec![accounts(2)]),
             Some(vec![accounts(2)]),
+            500,
         );
         testing_env!(context.is_view(true).build());
         assert_eq!(contract.get_owner(), accounts(0));
         assert_eq!(contract.get_treasury(), accounts(1));
         assert_eq!(contract.approved_ft_token_ids(), vec![near_account()]);
         assert_eq!(contract.approved_nft_contract_ids(), vec![accounts(2)]);
+        assert_eq!(contract.transaction_fee.current_fee, 500);
     }
 
     #[test]
@@ -2047,5 +2053,55 @@ mod tests {
             .build());
 
         contract.accept_bid(accounts(2), "1:1".to_string());
+    }
+
+    #[test]
+    fn test_change_transaction_fee_immediately() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        contract.set_transaction_fee(100, None);
+
+        assert_eq!(contract.get_transaction_fee().current_fee, 100);
+    }
+
+    #[test]
+    fn test_change_transaction_fee_with_time() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build()
+        );
+
+        assert_eq!(contract.get_transaction_fee().current_fee, 500);
+        assert_eq!(contract.get_transaction_fee().next_fee, None);
+        assert_eq!(contract.get_transaction_fee().start_time, None);
+
+        let next_fee: u16 = 100;
+        let start_time: Timestamp = 1618109122863866400;
+        let start_time_sec: TimestampSec = to_sec(start_time);
+        contract.set_transaction_fee(next_fee, Some(start_time_sec));
+
+        assert_eq!(contract.get_transaction_fee().current_fee, 500);
+        assert_eq!(contract.get_transaction_fee().next_fee, Some(next_fee));
+        assert_eq!(contract.get_transaction_fee().start_time, Some(start_time_sec));
+
+        testing_env!(context
+            .predecessor_account_id(accounts(1))
+            .block_timestamp(start_time + 1)
+            .build()
+        );
+
+        contract.calculate_current_transaction_fee();
+        assert_eq!(contract.get_transaction_fee().current_fee, next_fee);
+        assert_eq!(contract.get_transaction_fee().next_fee, None);
+        assert_eq!(contract.get_transaction_fee().start_time, None);
     }
 }
