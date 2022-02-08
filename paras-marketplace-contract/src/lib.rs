@@ -253,6 +253,11 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner();
 
+        assert!(
+            next_fee < 10_000,
+            "Paras: fee is higher than 10_000"
+        );
+
         if start_time.is_none() {
             self.transaction_fee.current_fee = next_fee;
             self.transaction_fee.next_fee = None;
