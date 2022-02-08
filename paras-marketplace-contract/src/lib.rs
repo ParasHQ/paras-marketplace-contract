@@ -18,7 +18,6 @@ const GAS_FOR_NFT_TRANSFER: Gas = Gas(20_000_000_000_000);
 const BASE_GAS: Gas = Gas(5_000_000_000_000);
 const GAS_FOR_ROYALTIES: Gas = Gas(BASE_GAS.0 * 10u64);
 const NO_DEPOSIT: Balance = 0;
-const TREASURY_FEE: u128 = 500; // 500 /10_000 = 0.05
 const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
 
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
@@ -33,6 +32,14 @@ pub type TokenId = String;
 #[serde(crate = "near_sdk::serde")]
 pub struct Payout {
     pub payout: PayoutHashMap
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct TransactionFee {
+    pub next_fee: Option<u16>,
+    pub start_time: Option<u128>,
+    pub current_fee: u16,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -118,15 +125,19 @@ pub struct MarketDataJson {
     is_auction: Option<bool>,
 }
 
+#[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct ContractV1 {
+pub struct ContractV2 {
     pub owner_id: AccountId,
     pub treasury_id: AccountId,
-    pub market: UnorderedMap<ContractAndTokenId, MarketDataV1>,
+    pub old_market: UnorderedMap<ContractAndTokenId, MarketDataV1>,
+    pub market: UnorderedMap<ContractAndTokenId, MarketData>,
     pub approved_ft_token_ids: UnorderedSet<AccountId>,
     pub approved_nft_contract_ids: UnorderedSet<AccountId>,
     pub storage_deposits: LookupMap<AccountId, Balance>,
     pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
+    pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
+    pub paras_nft_contracts: UnorderedSet<AccountId>,
 }
 
 #[near_bindgen]
@@ -142,6 +153,7 @@ pub struct Contract {
     pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
     pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
     pub paras_nft_contracts: UnorderedSet<AccountId>,
+    pub transaction_fee: TransactionFee,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -166,6 +178,7 @@ impl Contract {
         approved_ft_token_ids: Option<Vec<AccountId>>,
         approved_nft_contract_ids: Option<Vec<AccountId>>,
         paras_nft_contracts: Option<Vec<AccountId>>,
+        current_fee: u16,
     ) -> Self {
         let mut this = Self {
             owner_id: owner_id.into(),
@@ -178,6 +191,11 @@ impl Contract {
             by_owner_id: LookupMap::new(StorageKey::ByOwnerId),
             offers: UnorderedMap::new(StorageKey::Offers),
             paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIds),
+            transaction_fee: TransactionFee {
+                next_fee: None,
+                start_time: None,
+                current_fee,
+            }
         };
 
         this.approved_ft_token_ids.insert(&near_account());
@@ -193,18 +211,18 @@ impl Contract {
     }
 
     #[init(ignore_state)]
-    pub fn migrate(paras_nft_contracts: Option<Vec<AccountId>>) -> Self {
-        let prev: ContractV1 = env::state_read().expect("ERR_NOT_INITIALIZED");
+    pub fn migrate(current_fee: u16) -> Self {
+        let prev: ContractV2 = env::state_read().expect("ERR_NOT_INITIALIZED");
         assert_eq!(
             env::predecessor_account_id(),
             prev.owner_id,
             "Paras: Only owner"
         );
 
-        let mut this = Contract {
+        let this = Contract {
             owner_id: prev.owner_id,
             treasury_id: prev.treasury_id,
-            old_market: prev.market,
+            old_market: prev.old_market,
             market: UnorderedMap::new(StorageKey::MarketV2),
             approved_ft_token_ids: prev.approved_ft_token_ids,
             approved_nft_contract_ids: prev.approved_nft_contract_ids,
@@ -212,9 +230,12 @@ impl Contract {
             by_owner_id: prev.by_owner_id,
             offers: UnorderedMap::new(StorageKey::Offers),
             paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIds),
+            transaction_fee: TransactionFee {
+                next_fee: None,
+                start_time: None,
+                current_fee
+            }
         };
-
-        add_accounts(paras_nft_contracts, &mut this.paras_nft_contracts);
 
         this
     }
@@ -226,6 +247,45 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner();
         self.treasury_id = treasury_id;
+    }
+
+    #[payable]
+    pub fn set_transaction_fee(&mut self, next_fee: u16, start_time: Option<U128>) {
+        assert_one_yocto();
+        self.assert_owner();
+
+        if start_time.is_none() {
+            self.transaction_fee.current_fee = next_fee;
+            self.transaction_fee.next_fee = None;
+            self.transaction_fee.start_time = None;
+            return
+        } else {
+            let start_time: u128 = start_time.unwrap().0;
+            assert!(
+                start_time > env::block_timestamp() as u128,
+                "start_time is less than current block_timestamp"
+            );
+            self.transaction_fee.next_fee = Some(next_fee);
+            self.transaction_fee.start_time = Some(start_time);
+        }
+    }
+
+    fn calculate_current_transaction_fee(&mut self) -> u128 {
+        let transaction_fee: &TransactionFee = &self.transaction_fee;
+        if transaction_fee.next_fee.is_some() {
+            let current_time = env::block_timestamp() as u128;
+            let start_time = transaction_fee.start_time.unwrap();
+            if current_time >= start_time {
+                self.transaction_fee.current_fee = transaction_fee.next_fee.unwrap();
+                self.transaction_fee.next_fee = None;
+                self.transaction_fee.start_time = None;
+            }
+        }
+        self.transaction_fee.current_fee as u128
+    }
+
+    pub fn get_transaction_fee(&self) -> &TransactionFee {
+        &self.transaction_fee
     }
 
     #[payable]
@@ -432,7 +492,7 @@ impl Contract {
         // Payout (transfer to royalties and seller)
         if market_data.ft_token_id == near_account() {
             // 5% fee for treasury
-            let treasury_fee = price.0 * TREASURY_FEE / 10_000u128;
+            let treasury_fee = price.0 * self.calculate_current_transaction_fee() / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
@@ -880,7 +940,7 @@ impl Contract {
         // Payout (transfer to royalties and seller)
         if offer_data.ft_token_id == near_account() {
             // 5% fee for treasury
-            let treasury_fee = offer_data.price as u128 * TREASURY_FEE / 10_000u128;
+            let treasury_fee = offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
