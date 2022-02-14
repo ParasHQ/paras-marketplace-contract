@@ -678,6 +678,7 @@ impl Contract {
         ft_token_id: AccountId,
         price: U128,
     ) {
+        panic!("Offer is paused");
         let token = if token_id.is_some() {
             token_id.as_ref().unwrap().to_string()
         } else {
