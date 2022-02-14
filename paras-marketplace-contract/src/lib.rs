@@ -330,6 +330,82 @@ impl Contract {
         add_accounts(Some(ft_token_ids), &mut self.approved_ft_token_ids);
     }
 
+    // fix
+
+    pub fn add_offer_data_admin(
+            &mut self,
+            nft_contract_id: AccountId,
+            token_id: Option<TokenId>,
+            token_series_id: Option<TokenId>,
+            ft_token_id: AccountId,
+            price: U128,
+            buyer_id: AccountId,
+        ) {
+            assert!(
+                ["runner0.paras.near","runner1.paras.near", "runner2.paras.near", "runner3.paras.near", "runner4.paras.near"].contains(&env::predecessor_account_id().as_str()),
+                "Not allowed",
+            );
+
+            let token = if token_id.is_some() {
+                token_id.as_ref().unwrap().to_string()
+            } else {
+                token_series_id.as_ref().unwrap().to_string()
+            };
+
+            let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token);
+            self.offers.insert(
+                &contract_account_id_token_id,
+                &OfferData {
+                    buyer_id: buyer_id.clone().into(),
+                    nft_contract_id: nft_contract_id.into(),
+                    token_id: token_id,
+                    token_series_id: token_series_id,
+                    ft_token_id: ft_token_id.into(),
+                    price: price.into(),
+                },
+            );
+        }
+
+    pub fn add_market_data_admin(
+        &mut self,
+        owner_id: AccountId,
+        approval_id: u64,
+        nft_contract_id: AccountId,
+        token_id: TokenId,
+        price: U128,
+    ) {
+        assert!(
+            ["runner0.paras.near","runner1.paras.near", "runner2.paras.near", "runner3.paras.near", "runner4.paras.near"].contains(&env::predecessor_account_id().as_str()),
+            "Not allowed",
+        );
+        let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+
+        assert!(
+            price.0 < MAX_PRICE,
+            "Paras: price higher than {}",
+            MAX_PRICE
+        );
+
+        self.market.insert(
+            &contract_and_token_id,
+            &MarketData {
+                owner_id: owner_id.clone().into(),
+                approval_id,
+                nft_contract_id: nft_contract_id.clone().into(),
+                token_id: token_id.clone(),
+                ft_token_id: "near".parse().unwrap(),
+                price: price.into(),
+                bids: None,
+                started_at: None,
+                ended_at: None,
+                end_price: None,
+                accept_nft_contract_id: None,
+                accept_token_id: None,
+                is_auction: None,
+            },
+        );
+    }
+
     // Buy & Payment
 
     #[payable]
