@@ -166,6 +166,9 @@ pub enum StorageKey {
     Offers,
     ParasNFTContractIds,
     MarketV2,
+    MarketV3,
+    OffersV2,
+    ParasNFTContractIdsV2
 }
 
 #[near_bindgen]
@@ -211,7 +214,7 @@ impl Contract {
 
     #[init(ignore_state)]
     pub fn migrate(current_fee: u16) -> Self {
-        let prev: ContractV2 = env::state_read().expect("ERR_NOT_INITIALIZED");
+        let prev: Contract = env::state_read().expect("ERR_NOT_INITIALIZED");
         assert_eq!(
             env::predecessor_account_id(),
             prev.owner_id,
@@ -222,13 +225,13 @@ impl Contract {
             owner_id: prev.owner_id,
             treasury_id: prev.treasury_id,
             old_market: prev.old_market,
-            market: prev.market,
+            market: UnorderedMap::new(StorageKey::MarketV3),
             approved_ft_token_ids: prev.approved_ft_token_ids,
             approved_nft_contract_ids: prev.approved_nft_contract_ids,
             storage_deposits: prev.storage_deposits,
             by_owner_id: prev.by_owner_id,
-            offers: prev.offers,
-            paras_nft_contracts: prev.paras_nft_contracts,
+            offers: UnorderedMap::new(StorageKey::OffersV2),
+            paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIdsV2),
             transaction_fee: TransactionFee {
                 next_fee: None,
                 start_time: None,
