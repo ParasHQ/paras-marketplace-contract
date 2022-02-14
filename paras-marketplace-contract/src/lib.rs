@@ -261,7 +261,13 @@ impl Contract {
     // Buy & Payment
 
     #[payable]
-    pub fn buy(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
+    pub fn buy(
+        &mut self,
+        nft_contract_id: AccountId,
+        token_id: TokenId,
+        ft_token_id: Option<AccountId>,
+        price: Option<U128>
+    ) {
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
         let market_data: Option<MarketData> =
             if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
@@ -301,6 +307,13 @@ impl Contract {
             NEAR,
             "Paras: NEAR support only"
         );
+
+        if ft_token_id.is_some() {
+            assert_eq!(ft_token_id.unwrap().to_string(), market_data.ft_token_id.to_string())
+        }
+        if price.is_some() {
+            assert_eq!(price.unwrap().0, market_data.price);
+        }
 
         let mut price = market_data.price;
 
@@ -1935,7 +1948,7 @@ mod tests {
             .attached_deposit(10u128.pow(24))
             .build());
 
-        contract.buy(accounts(2), "1:1".to_string());
+        contract.buy(accounts(2), "1:1".to_string(), None, None);
     }
 
     #[test]
