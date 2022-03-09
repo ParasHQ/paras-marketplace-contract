@@ -1065,7 +1065,7 @@ impl Contract {
             buyer_nft_contract_id.clone().into(),
             buyer_token_id.clone(),
             buyer_id.clone(),
-            buyer_approval_id,
+            buyer_approval_id.clone(),
         );
 
         env::log_str(
@@ -1076,6 +1076,9 @@ impl Contract {
                     "nft_contract_id": nft_contract_id,
                     "token_id": token_id,
                     "token_series_id": token_series_id,
+                    "buyer_nft_contract_id": buyer_nft_contract_id,
+                    "buyer_token_id": buyer_token_id,
+                    "buyer_approval_id": buyer_approval_id
                 }
             })
             .to_string(),
