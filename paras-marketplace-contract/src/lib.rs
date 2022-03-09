@@ -1128,6 +1128,7 @@ impl Contract {
         self.by_owner_id.insert(&buyer_id, &token_ids);
     }
 
+    #[payable]
     pub fn delete_trade(
         &mut self,
         nft_contract_id: AccountId,
@@ -2359,6 +2360,69 @@ mod tests {
         contract.delete_offer(accounts(3), Some("1:1".to_string()), None);
 
         contract.get_offer(accounts(3), accounts(1), Some("1:1".to_string()), None);
+    }
+
+    #[test]
+    fn test_add_trade() {
+        let (mut context, mut contract) = setup_contract();
+
+        let one_near = 10u128.pow(24);
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(one_near)
+            .build());
+
+        contract.internal_add_trade(
+            accounts(3),
+            Some("1:1".to_string()),
+            None,
+            accounts(1),
+            Some("1:1".to_string()),
+            accounts(2),
+            1,
+        );
+
+        let trade_data = contract.get_trade(
+            accounts(3),
+            accounts(2),
+            Some("1:1".to_string()),
+            None
+        );
+        
+        assert_eq!(trade_data.buyer_id, accounts(2));
+        assert_eq!(trade_data.buyer_nft_contract_id, accounts(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "Paras: Trade does not exist")]
+    fn test_delete_trade() {
+        let (mut context, mut contract) = setup_contract();
+
+        let one_near = 10u128.pow(24);
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(one_near)
+            .build());
+
+        contract.internal_add_trade(
+            accounts(3),
+            Some("1:1".to_string()),
+            None,
+            accounts(1),
+            Some("1:1".to_string()),
+            accounts(2),
+            1,
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build());
+
+        contract.delete_trade(accounts(3), Some("1:1".to_string()), None);
+        contract.get_trade(accounts(3), accounts(1), Some("1:1".to_string()), None);
     }
 
     #[test]
