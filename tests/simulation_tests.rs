@@ -159,11 +159,11 @@ fn test_buy() {
     let restored_storage_price_for_buy =
         initial_storage_usage - marketplace.account().unwrap().storage_usage;
 
-        println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
-        println!(
-            "[BUY] Gas burnt: {} TeraGas",
-            outcome.gas_burnt().0 as f64 / 1e12
-        );
+    println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+    println!(
+        "[BUY] Gas burnt: {} TeraGas",
+        outcome.gas_burnt().0 as f64 / 1e12
+    );
     outcome.assert_success();
     println!(
         "[BUY] Restored storage price : {} Bytes",
@@ -368,6 +368,126 @@ fn test_accept_offer_paras_series() {
 
     assert_eq!(token.owner_id, bob.account_id());
 }
+
+// //trade
+//
+// #[test]
+// fn test_add_trade() {
+//     let (marketplace, nft, _, alice, bob, chandra, _) = init();
+//
+//     //owner marketplace and nft-> alice
+//     //seller -> bob
+//     //buyer -> chandra
+//     //treasury -> treasury
+//     //royalty to 10 different account
+//
+//     create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+//
+//     bob.call(
+//         marketplace.account_id(),
+//         "storage_deposit",
+//         &json!({}).to_string().into_bytes(),
+//         DEFAULT_GAS,
+//         STORAGE_ADD_MARKET_DATA,
+//     )
+//     .assert_success();
+//
+//     let initial_storage_usage = marketplace.account().unwrap().storage_usage;
+//
+//     let outcome = bob.call(
+//         marketplace.account_id(),
+//         "add_trade",
+//         &json!({
+//             "nft_contract_id": nft.account_id(),
+//             "token_id": "1:1",
+//             "buyer_nft_contract_id": "nft_contract_test.near",
+//             "buyer_token_id": "2:2",
+//         })
+//         .to_string()
+//         .into_bytes(),
+//         DEFAULT_GAS,
+//         0,
+//     );
+//
+//     outcome.assert_success();
+//     let storage_price = (marketplace.account().unwrap().storage_usage - initial_storage_usage)
+//         as u128
+//         * 10u128.pow(19);
+//
+//     println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+//     println!(
+//         "[ADD_TRADE] Gas burnt: {} TeraGas",
+//         outcome.gas_burnt().0 as f64 / 1e12
+//     );
+//     println!("[ADD_TRADE] Storage price : {} N", storage_price);
+// }
+//
+// #[test]
+// fn test_delete_trade() {
+//     let (marketplace, nft, _, alice, bob, chandra, _) = init();
+//
+//     //owner marketplace and nft-> alice
+//     //seller -> bob
+//     //buyer -> chandra
+//     //treasury -> treasury
+//     //royalty to 10 different account
+//
+//     create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+//
+//     bob.call(
+//         marketplace.account_id(),
+//         "storage_deposit",
+//         &json!({}).to_string().into_bytes(),
+//         DEFAULT_GAS,
+//         STORAGE_ADD_MARKET_DATA,
+//     )
+//     .assert_success();
+//
+//     let initial_storage_usage = marketplace.account().unwrap().storage_usage;
+//
+//     let outcome = bob.call(
+//         marketplace.account_id(),
+//         "add_trade",
+//         &json!({
+//             "nft_contract_id": nft.account_id(),
+//             "token_id": "1:1",
+//             "buyer_nft_contract_id": "nft_contract_test.near",
+//             "buyer_token_id": "2:2",
+//         })
+//         .to_string()
+//         .into_bytes(),
+//         DEFAULT_GAS,
+//         0,
+//     );
+//
+//     outcome.assert_success();
+//
+//     let outcome = bob.call(
+//         marketplace.account_id(),
+//         "delete_trade",
+//         &json!({
+//             "nft_contract_id": nft.account_id(),
+//             "token_id": "1:1",
+//         })
+//         .to_string()
+//         .into_bytes(),
+//         DEFAULT_GAS,
+//         0,
+//     );
+//
+//     outcome.assert_success();
+//     let storage_price = (marketplace.account().unwrap().storage_usage - initial_storage_usage)
+//         as u128
+//         * 10u128.pow(19);
+//
+//     println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+//     println!(
+//         "[DELETE_TRADE] Gas burnt: {} TeraGas",
+//         outcome.gas_burnt().0 as f64 / 1e12
+//     );
+//     println!("[DELETE_TRADE] Storage price : {} N", storage_price);
+// }
+//
 
 #[test]
 fn test_add_market_data_auction_timed() {

@@ -20,6 +20,12 @@ pub struct MarketArgs {
     pub ended_at: Option<U64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_auction: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seller_nft_contract_id: Option<AccountId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seller_token_id: Option<TokenId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seller_token_series_id: Option<TokenSeriesId>,
 }
 
 trait NonFungibleTokenApprovalsReceiver {
@@ -32,7 +38,7 @@ trait NonFungibleTokenApprovalsReceiver {
     );
 }
 
-#[near_bindgen]
+// #[near_bindgen]
 impl NonFungibleTokenApprovalsReceiver for Contract {
     fn nft_on_approve(
         &mut self,
@@ -49,11 +55,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             nft_contract_id, signer_id,
             "Paras: nft_on_approve should only be called via cross-contract call"
         );
-        assert_eq!(
-            owner_id,
-            signer_id,
-            "Paras: owner_id should be signer_id"
-        );
+        assert_eq!(owner_id, signer_id, "Paras: owner_id should be signer_id");
 
         assert!(
             self.approved_nft_contract_ids.contains(&nft_contract_id),
@@ -69,6 +71,9 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             ended_at,
             end_price,
             is_auction,
+            seller_nft_contract_id,
+            seller_token_id,
+            seller_token_series_id,
         } = near_sdk::serde_json::from_str(&msg).expect("Not valid MarketArgs");
 
         if market_type == "sale" {
@@ -134,6 +139,59 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 owner_id,
                 approval_id,
                 price.unwrap().0,
+            );
+        } else if market_type == "add_trade" {
+            let storage_amount = self.storage_minimum_balance().0;
+            let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
+            let signer_storage_required =
+                (self.get_supply_by_owner_id(signer_id).0 + 1) as u128 * storage_amount;
+
+            assert!(
+                owner_paid_storage >= signer_storage_required,
+                "Insufficient storage paid: {}, for {} sales at {} rate of per sale",
+                owner_paid_storage,
+                signer_storage_required / storage_amount,
+                storage_amount,
+            );
+
+            let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+            if let Some(mut market_data) = self.market.get(&contract_and_token_id) {
+                market_data.approval_id = approval_id;
+                self.market.insert(&contract_and_token_id, &market_data);
+            }
+
+            self.add_trade(
+                seller_nft_contract_id.unwrap(),
+                seller_token_id,
+                seller_token_series_id,
+                nft_contract_id,
+                owner_id,
+                Some(token_id),
+                approval_id,
+            );
+        } else if market_type == "accept_trade" {
+            assert!(buyer_id.is_some(), "Paras: Account id is not specified");
+
+            self.internal_accept_trade(
+                nft_contract_id,
+                buyer_id.unwrap(),
+                token_id,
+                owner_id,
+                approval_id,
+            );
+        } else if market_type == "accept_trade_paras_series" {
+            assert!(buyer_id.is_some(), "Paras: Account id is not specified");
+            assert!(
+                self.paras_nft_contracts.contains(&nft_contract_id),
+                "Paras: accepting offer series for Paras NFT only"
+            );
+
+            self.internal_accept_trade_series(
+                nft_contract_id,
+                buyer_id.unwrap(),
+                token_id,
+                owner_id,
+                approval_id,
             );
         }
     }
