@@ -474,7 +474,9 @@ fn test_accept_trade(){
             "account_id": marketplace.account_id(),
             "msg": &json!{{
                 "market_type": "accept_trade",
-                "buyer_id": chandra.account_id()
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
             }}.to_string()
         })
         .to_string()
@@ -486,7 +488,7 @@ fn test_accept_trade(){
     //after chandra trade his nft the result should be
     //chadra's token_id = 1:2
     //darmaji's token_id = 1:1
-    
+   
     let chandra_token: Token = nft
         .view(
             nft.account_id(),
@@ -510,11 +512,10 @@ fn test_accept_trade(){
             .into_bytes(),
         )
         .unwrap_json();
-    
+   
     assert_eq!(chandra_token.owner_id, darmaji.account_id());
     assert_eq!(darmaji_token.owner_id, chandra.account_id());
 }
-
 
 #[test]
 fn test_accept_trade_paras_series(){
@@ -569,7 +570,9 @@ fn test_accept_trade_paras_series(){
             "account_id": marketplace.account_id(),
             "msg": &json!{{
                 "market_type": "accept_trade_paras_series",
-                "buyer_id": chandra.account_id()
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
             }}.to_string()
         })
         .to_string()
@@ -581,7 +584,7 @@ fn test_accept_trade_paras_series(){
     //after chandra trade his nft the result should be
     //chadra's token_id = 1:2
     //darmaji's token_id = 1:1
-    
+   
     let chandra_token: Token = nft
         .view(
             nft.account_id(),
@@ -605,7 +608,7 @@ fn test_accept_trade_paras_series(){
             .into_bytes(),
         )
         .unwrap_json();
-    
+   
     assert_eq!(chandra_token.owner_id, darmaji.account_id());
     assert_eq!(darmaji_token.owner_id, chandra.account_id());
 }

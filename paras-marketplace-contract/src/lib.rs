@@ -124,18 +124,6 @@ pub struct TradeData {
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-pub struct TradeDataJson {
-    buyer_id: AccountId,
-    nft_contract_id: AccountId,
-    token_id: Option<TokenId>,
-    token_series_id: Option<TokenId>,
-    buyer_nft_contract_id: AccountId,
-    buyer_token_id: Option<TokenId>,
-    buyer_approval_id: u64,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
 pub struct MarketDataJson {
     owner_id: AccountId,
     approval_id: U64,
@@ -165,6 +153,12 @@ pub struct ContractV2 {
     pub transaction_fee: TransactionFee,
 }
 
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct TradeList {
+    pub approval_id: u64,
+    pub trade_data: UnorderedMap<ContractAccountIdTokenId, TradeData>,
+}
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -179,7 +173,7 @@ pub struct Contract {
     pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
     pub paras_nft_contracts: UnorderedSet<AccountId>,
     pub transaction_fee: TransactionFee,
-    pub trades: UnorderedMap<ContractAccountIdTokenId, TradeData>,
+    pub trades: UnorderedMap<ContractAccountIdTokenId, TradeList>,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -189,7 +183,9 @@ pub enum StorageKey {
     NFTContractIds,
     StorageDeposits,
     ByOwnerId,
-    ByOwnerIdInner { account_id_hash: CryptoHash },
+    ByOwnerIdInner {
+        account_id_hash: CryptoHash,
+    },
     Offers,
     ParasNFTContractIds,
     MarketV2,
@@ -197,6 +193,9 @@ pub enum StorageKey {
     OffersV2,
     ParasNFTContractIdsV2,
     Trade,
+    TradeList {
+        contract_account_id_token_id_hash: CryptoHash,
+    },
 }
 
 #[near_bindgen]
@@ -708,9 +707,6 @@ impl Contract {
 
         match offer_data {
             Some(offer) => {
-                if let Some(_) = self.trades.get(&contract_account_id_token_id) {
-                    return Some(offer);
-                }
                 let mut by_owner_id = self
                     .by_owner_id
                     .get(&offer.buyer_id)
@@ -1049,7 +1045,7 @@ impl Contract {
             token_series_id.as_ref().unwrap().to_string()
         };
 
-        self.internal_delete_trade(
+        self.internal_delete_offer(
             nft_contract_id.clone().into(),
             buyer_id.clone(),
             token.clone(),
@@ -1099,18 +1095,46 @@ impl Contract {
         };
 
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token);
-        self.trades.insert(
-            &contract_account_id_token_id,
-            &TradeData {
-                buyer_id: buyer_id.clone().into(),
-                nft_contract_id: nft_contract_id.into(),
-                token_id: token_id,
-                token_series_id: token_series_id,
-                buyer_nft_contract_id: buyer_nft_contract_id.into(),
-                buyer_token_id: buyer_token_id,
-                buyer_approval_id: buyer_approval_id,
-            },
+        let buyer_contract_account_id_token_id = make_triple(
+            &buyer_nft_contract_id,
+            &buyer_id,
+            &buyer_token_id
+                .as_ref()
+                .expect("Paras: Buyer token id is not specified"),
         );
+
+        let trade_data = TradeData {
+            buyer_id: buyer_id.clone().into(),
+            nft_contract_id: nft_contract_id.into(),
+            token_id: token_id,
+            token_series_id: token_series_id,
+            buyer_nft_contract_id: buyer_nft_contract_id.into(),
+            buyer_token_id: buyer_token_id,
+            buyer_approval_id: buyer_approval_id,
+        };
+        let mut buyer_trade_list = self
+            .trades
+            .get(&buyer_contract_account_id_token_id)
+            .unwrap_or_else(|| {
+                TradeList {
+                    approval_id: 0, //init
+                    trade_data: UnorderedMap::new(
+                        //init
+                        StorageKey::TradeList {
+                            contract_account_id_token_id_hash: hash_contract_account_id_token_id(
+                                &buyer_contract_account_id_token_id,
+                            ),
+                        },
+                    ),
+                }
+            });
+        buyer_trade_list.approval_id = buyer_approval_id;
+        buyer_trade_list
+            .trade_data
+            .insert(&contract_account_id_token_id, &trade_data);
+
+        self.trades
+            .insert(&buyer_contract_account_id_token_id, &buyer_trade_list);
 
         let mut token_ids = self.by_owner_id.get(&buyer_id).unwrap_or_else(|| {
             UnorderedSet::new(
@@ -1121,7 +1145,7 @@ impl Contract {
                 .unwrap(),
             )
         });
-        token_ids.insert(&contract_account_id_token_id);
+        token_ids.insert(&make_key_owner_by_id_trade(contract_account_id_token_id));
         self.by_owner_id.insert(&buyer_id, &token_ids);
     }
 
@@ -1131,6 +1155,8 @@ impl Contract {
         nft_contract_id: AccountId,
         token_id: Option<TokenId>,
         token_series_id: Option<TokenSeriesId>,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
     ) {
         assert_one_yocto();
         let token = if token_id.is_some() {
@@ -1140,12 +1166,19 @@ impl Contract {
         };
 
         let buyer_id = env::predecessor_account_id();
+        let buyer_contract_account_id_token_id =
+            make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token);
 
-        let trade_data = self
+        let trade_list = self
             .trades
+            .get(&buyer_contract_account_id_token_id)
+            .expect("Paras: Trade list does not exist");
+
+        let trade_data = trade_list
+            .trade_data
             .get(&contract_account_id_token_id)
-            .expect("Paras: Trade does not exist");
+            .expect("Paras: Trade data does not exist");
 
         if token_id.is_some() {
             assert_eq!(trade_data.token_id.unwrap(), token)
@@ -1162,6 +1195,8 @@ impl Contract {
             nft_contract_id.clone().into(),
             buyer_id.clone(),
             token.clone(),
+            buyer_nft_contract_id.clone(),
+            buyer_token_id.clone(),
         )
         .expect("Paras: Trade not found");
 
@@ -1173,6 +1208,8 @@ impl Contract {
                     "buyer_id": buyer_id,
                     "token_id": token_id,
                     "token_series_id": token_series_id,
+                    "buyer_nft_contract_id": buyer_nft_contract_id,
+                    "buyer_token_id": buyer_token_id
                 }
             })
             .to_string(),
@@ -1184,20 +1221,30 @@ impl Contract {
         nft_contract_id: AccountId,
         buyer_id: AccountId,
         token_id: TokenId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
     ) -> Option<TradeData> {
+        let buyer_contract_account_id_token_id =
+            make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
-        let trade_data = self.trades.remove(&contract_account_id_token_id);
+
+        let mut trade_list = self
+            .trades
+            .get(&buyer_contract_account_id_token_id)
+            .expect("Paras: Trade list does not exist");
+
+        let trade_data = trade_list.trade_data.remove(&contract_account_id_token_id);
+
+        self.trades
+            .insert(&buyer_contract_account_id_token_id, &trade_list);
 
         match trade_data {
             Some(trade) => {
-                if let Some(_) = self.offers.get(&contract_account_id_token_id) {
-                    return Some(trade);
-                }
                 let mut by_owner_id = self
                     .by_owner_id
                     .get(&trade.buyer_id)
                     .expect("Paras: no market data by account_id");
-                by_owner_id.remove(&contract_account_id_token_id);
+                by_owner_id.remove(&make_key_owner_by_id_trade(contract_account_id_token_id));
                 if by_owner_id.is_empty() {
                     self.by_owner_id.remove(&trade.buyer_id);
                 } else {
@@ -1215,6 +1262,8 @@ impl Contract {
         buyer_id: AccountId,
         token_id: Option<TokenId>,
         token_series_id: Option<String>,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
     ) -> TradeData {
         let token = if token_id.is_some() {
             token_id.as_ref().unwrap()
@@ -1223,11 +1272,18 @@ impl Contract {
         };
 
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token);
+        let buyer_contract_account_id_token_id =
+            make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
 
-        let trade_data = self
+        let trade_list = self
             .trades
+            .get(&buyer_contract_account_id_token_id)
+            .expect("Paras: Trade list does not exist");
+
+        let trade_data = trade_list
+            .trade_data
             .get(&contract_account_id_token_id)
-            .expect("Paras: Trade does not exist");
+            .expect("Paras: Trade data does not exist");
 
         if token_id.is_some() {
             assert_eq!(trade_data.token_id.as_ref().unwrap(), token);
@@ -1235,7 +1291,7 @@ impl Contract {
             assert_eq!(trade_data.token_series_id.as_ref().unwrap(), token);
         }
 
-        trade_data
+        return trade_data;
     }
 
     fn internal_accept_trade(
@@ -1245,12 +1301,22 @@ impl Contract {
         token_id: TokenId,
         seller_id: AccountId,
         approval_id: u64,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
     ) -> Promise {
+        let buyer_contract_account_id_token_id =
+            make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
-        let trade_data = self
+
+        let trade_list = self
             .trades
+            .get(&buyer_contract_account_id_token_id)
+            .expect("Paras: Trade list does not exist");
+
+        let trade_data = trade_list
+            .trade_data
             .get(&contract_account_id_token_id)
-            .expect("Paras: Trade does not exist");
+            .expect("Paras: Trade data does not exist");
 
         assert_eq!(trade_data.token_id.as_ref().unwrap(), &token_id);
 
@@ -1259,6 +1325,8 @@ impl Contract {
                 nft_contract_id.clone().into(),
                 buyer_id.clone(),
                 token_id.clone(),
+                buyer_nft_contract_id.clone(),
+                buyer_token_id.clone(),
             )
             .expect("Paras: Trade does not exist");
 
@@ -1296,18 +1364,31 @@ impl Contract {
         token_id: TokenId,
         seller_id: AccountId,
         approval_id: u64,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
     ) -> Promise {
         // Token delimiter : is specific for Paras NFT
         let mut token_id_iter = token_id.split(":");
         let token_series_id: String = token_id_iter.next().unwrap().parse().unwrap();
 
+        let buyer_contract_account_id_token_id =
+            make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
         let contract_account_id_token_id =
             make_triple(&nft_contract_id, &buyer_id, &token_series_id);
 
-        let trade_data = self
+        let trade_list = self
             .trades
+            .get(&buyer_contract_account_id_token_id)
+            .expect("Paras: Trade list does not exist");
+
+        let trade_data = trade_list
+            .trade_data
             .get(&contract_account_id_token_id)
-            .expect("Paras: Trade does not exist");
+            .expect("Paras: Trade data does not exist");
+        // let trade_data = self
+        //     .trades
+        //     .get(&contract_account_id_token_id)
+        //     .expect("Paras: Trade does not exist");
 
         assert_eq!(
             trade_data.token_series_id.as_ref().unwrap(),
@@ -1318,6 +1399,8 @@ impl Contract {
             nft_contract_id.clone().into(),
             buyer_id.clone(),
             token_series_id.clone(),
+            buyer_nft_contract_id.clone(),
+            buyer_token_id.clone(),
         )
         .expect("Paras: Trade does not exist");
 
@@ -1897,6 +1980,14 @@ pub fn hash_account_id(account_id: &AccountId) -> CryptoHash {
     hash
 }
 
+pub fn hash_contract_account_id_token_id(
+    contract_account_id_token_id: &ContractAccountIdTokenId,
+) -> CryptoHash {
+    let mut hash = CryptoHash::default();
+    hash.copy_from_slice(&env::sha256(contract_account_id_token_id.as_bytes()));
+    hash
+}
+
 pub fn to_sec(timestamp: Timestamp) -> TimestampSec {
     (timestamp / 10u64.pow(9)) as u32
 }
@@ -1939,6 +2030,10 @@ fn make_triple(nft_contract_id: &AccountId, buyer_id: &AccountId, token: &str) -
         "{}{}{}{}{}",
         nft_contract_id, DELIMETER, buyer_id, DELIMETER, token
     )
+}
+
+fn make_key_owner_by_id_trade(contract_account_id_token_id: String) -> String {
+    format!("{}{}trade", contract_account_id_token_id, DELIMETER)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -2367,24 +2462,20 @@ mod tests {
             Some("1:1".to_string()),
             None,
             accounts(1),
-            Some("1:1".to_string()),
+            Some("1:2".to_string()),
             accounts(2),
             1,
         );
 
-        let trade_data = contract.get_trade(
-            accounts(3),
-            accounts(2),
-            Some("1:1".to_string()),
-            None
-        );
-        
+        let trade_data =
+            contract.get_trade(accounts(3), accounts(2), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
+
         assert_eq!(trade_data.buyer_id, accounts(2));
         assert_eq!(trade_data.buyer_nft_contract_id, accounts(1));
     }
 
     #[test]
-    #[should_panic(expected = "Paras: Trade does not exist")]
+    #[should_panic(expected = "Paras: Trade list does not exist")]
     fn test_delete_trade() {
         let (mut context, mut contract) = setup_contract();
 
@@ -2410,8 +2501,8 @@ mod tests {
             .attached_deposit(1)
             .build());
 
-        contract.delete_trade(accounts(3), Some("1:1".to_string()), None);
-        contract.get_trade(accounts(3), accounts(1), Some("1:1".to_string()), None);
+        contract.delete_trade(accounts(3), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
+        contract.get_trade(accounts(3), accounts(1), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
     }
 
     #[test]

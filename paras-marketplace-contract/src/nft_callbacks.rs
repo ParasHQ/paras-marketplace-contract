@@ -26,6 +26,10 @@ pub struct MarketArgs {
     pub seller_token_id: Option<TokenId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seller_token_series_id: Option<TokenSeriesId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buyer_nft_contract_id: Option<AccountId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buyer_token_id: Option<TokenId>,
 }
 
 trait NonFungibleTokenApprovalsReceiver {
@@ -74,6 +78,8 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             seller_nft_contract_id,
             seller_token_id,
             seller_token_series_id,
+            buyer_nft_contract_id,
+            buyer_token_id
         } = near_sdk::serde_json::from_str(&msg).expect("Not valid MarketArgs");
 
         if market_type == "sale" {
@@ -171,6 +177,8 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             );
         } else if market_type == "accept_trade" {
             assert!(buyer_id.is_some(), "Paras: Account id is not specified");
+            assert!(buyer_nft_contract_id.is_some(), "Paras: Buyer NFT contract id is not specified");
+            assert!(buyer_token_id.is_some(), "Paras: Buyer token id is not specified");
 
             self.internal_accept_trade(
                 nft_contract_id,
@@ -178,6 +186,8 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 token_id,
                 owner_id,
                 approval_id,
+                buyer_nft_contract_id.unwrap(),
+                buyer_token_id.unwrap()
             );
         } else if market_type == "accept_trade_paras_series" {
             assert!(buyer_id.is_some(), "Paras: Account id is not specified");
@@ -185,6 +195,8 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 self.paras_nft_contracts.contains(&nft_contract_id),
                 "Paras: accepting offer series for Paras NFT only"
             );
+            assert!(buyer_nft_contract_id.is_some(), "Paras: Buyer NFT contract id is not specified");
+            assert!(buyer_token_id.is_some(), "Paras: Buyer token id is not specified");
 
             self.internal_accept_trade_series(
                 nft_contract_id,
@@ -192,6 +204,8 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 token_id,
                 owner_id,
                 approval_id,
+                buyer_nft_contract_id.unwrap(),
+                buyer_token_id.unwrap()
             );
         }
     }
