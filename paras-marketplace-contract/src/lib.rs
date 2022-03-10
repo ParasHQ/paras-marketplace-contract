@@ -162,6 +162,7 @@ pub struct ContractV2 {
     pub by_owner_id: LookupMap<AccountId, UnorderedSet<TokenId>>,
     pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
     pub paras_nft_contracts: UnorderedSet<AccountId>,
+    pub transaction_fee: TransactionFee,
 }
 
 #[near_bindgen]
@@ -241,8 +242,8 @@ impl Contract {
     }
 
     #[init(ignore_state)]
-    pub fn migrate(current_fee: u16) -> Self {
-        let prev: Contract = env::state_read().expect("ERR_NOT_INITIALIZED");
+    pub fn migrate() -> Self {
+        let prev: ContractV2 = env::state_read().expect("ERR_NOT_INITIALIZED");
         assert_eq!(
             env::predecessor_account_id(),
             prev.owner_id,
@@ -253,18 +254,14 @@ impl Contract {
             owner_id: prev.owner_id,
             treasury_id: prev.treasury_id,
             old_market: prev.old_market,
-            market: UnorderedMap::new(StorageKey::MarketV3),
+            market: prev.market,
             approved_ft_token_ids: prev.approved_ft_token_ids,
             approved_nft_contract_ids: prev.approved_nft_contract_ids,
             storage_deposits: prev.storage_deposits,
             by_owner_id: prev.by_owner_id,
-            offers: UnorderedMap::new(StorageKey::OffersV2),
-            paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIdsV2),
-            transaction_fee: TransactionFee {
-                next_fee: None,
-                start_time: None,
-                current_fee,
-            },
+            offers: prev.offers,
+            paras_nft_contracts: prev.paras_nft_contracts,
+            transaction_fee: prev.transaction_fee,
             trades: UnorderedMap::new(StorageKey::Trade),
         };
 
