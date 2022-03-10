@@ -1215,7 +1215,7 @@ impl Contract {
         buyer_id: AccountId,
         token_id: Option<TokenId>,
         token_series_id: Option<String>,
-    ) -> TradeDataJson {
+    ) -> TradeData {
         let token = if token_id.is_some() {
             token_id.as_ref().unwrap()
         } else {
@@ -1235,15 +1235,7 @@ impl Contract {
             assert_eq!(trade_data.token_series_id.as_ref().unwrap(), token);
         }
 
-        TradeDataJson {
-            buyer_id: trade_data.buyer_id,
-            nft_contract_id: trade_data.nft_contract_id,
-            token_id: trade_data.token_id,
-            token_series_id: trade_data.token_series_id,
-            buyer_nft_contract_id: trade_data.buyer_nft_contract_id,
-            buyer_token_id: trade_data.buyer_token_id,
-            buyer_approval_id: trade_data.buyer_approval_id,
-        }
+        trade_data
     }
 
     fn internal_accept_trade(
