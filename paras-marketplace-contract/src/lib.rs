@@ -1045,10 +1045,12 @@ impl Contract {
             token_series_id.as_ref().unwrap().to_string()
         };
 
-        self.internal_delete_offer(
+        self.internal_delete_trade(
             nft_contract_id.clone().into(),
             buyer_id.clone(),
             token.clone(),
+            buyer_nft_contract_id.clone(),
+            buyer_token_id.clone().unwrap()
         );
 
         self.internal_add_trade(
