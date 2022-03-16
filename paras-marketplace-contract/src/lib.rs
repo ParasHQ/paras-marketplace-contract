@@ -1035,24 +1035,6 @@ impl Contract {
         buyer_token_id: Option<TokenId>,
         buyer_approval_id: u64,
     ) {
-        let token = if token_id.is_some() {
-            token_id.as_ref().unwrap().to_string()
-        } else {
-            assert!(
-                self.paras_nft_contracts.contains(&nft_contract_id),
-                "Paras: trade series for Paras NFT only"
-            );
-            token_series_id.as_ref().unwrap().to_string()
-        };
-
-        self.internal_delete_trade(
-            nft_contract_id.clone().into(),
-            buyer_id.clone(),
-            token.clone(),
-            buyer_nft_contract_id.clone(),
-            buyer_token_id.clone().unwrap()
-        );
-
         self.internal_add_trade(
             nft_contract_id.clone().into(),
             token_id.clone(),
@@ -1093,6 +1075,10 @@ impl Contract {
         let token = if token_id.is_some() {
             token_id.as_ref().unwrap().to_string()
         } else {
+            assert!(
+                self.paras_nft_contracts.contains(&nft_contract_id),
+                "Paras: trade series for Paras NFT only"
+            );
             token_series_id.as_ref().unwrap().to_string()
         };
 
@@ -1254,7 +1240,10 @@ impl Contract {
                 }
                 return Some(trade);
             }
-            None => return None,
+            None => {
+                self.trades.remove(&buyer_contract_account_id_token_id).expect("Paras: Error delete trade list");
+                return None
+            },
         };
     }
 
@@ -1337,22 +1326,18 @@ impl Contract {
         // trade flow
         // buyer_nft -> seller_nft
         // seller_nft -> buyer_nft
-        ext_contract::nft_transfer_payout(
+        ext_contract::nft_transfer(
             seller_id,
             trade_data.buyer_token_id.clone().unwrap(),
-            Some(trade_data.buyer_approval_id),
-            None,
-            Some(10u32),
+            trade_data.buyer_approval_id,
             trade_data.buyer_nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
         )
-        .then(ext_contract::nft_transfer_payout(
+        .then(ext_contract::nft_transfer(
             trade_data.buyer_id.clone(),
             token_id.clone(),
-            Some(approval_id),
-            None,
-            Some(10u32),
+            approval_id,
             nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
@@ -1387,10 +1372,6 @@ impl Contract {
             .trade_data
             .get(&contract_account_id_token_id)
             .expect("Paras: Trade data does not exist");
-        // let trade_data = self
-        //     .trades
-        //     .get(&contract_account_id_token_id)
-        //     .expect("Paras: Trade does not exist");
 
         assert_eq!(
             trade_data.token_series_id.as_ref().unwrap(),
@@ -1411,22 +1392,18 @@ impl Contract {
         // trade flow
         // buyer_nft -> seller_nft
         // seller_nft -> buyer_nft
-        ext_contract::nft_transfer_payout(
+        ext_contract::nft_transfer(
             seller_id,
             trade_data.buyer_token_id.clone().unwrap(),
-            Some(trade_data.buyer_approval_id),
-            None,
-            Some(10u32),
+            trade_data.buyer_approval_id,
             trade_data.buyer_nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
         )
-        .then(ext_contract::nft_transfer_payout(
+        .then(ext_contract::nft_transfer(
             trade_data.buyer_id.clone(),
             token_id.clone(),
-            Some(approval_id),
-            None,
-            Some(10u32),
+            approval_id,
             nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
