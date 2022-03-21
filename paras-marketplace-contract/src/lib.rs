@@ -212,36 +212,6 @@ impl Contract {
         this
     }
 
-    #[init(ignore_state)]
-    pub fn migrate(current_fee: u16) -> Self {
-        let prev: Contract = env::state_read().expect("ERR_NOT_INITIALIZED");
-        assert_eq!(
-            env::predecessor_account_id(),
-            prev.owner_id,
-            "Paras: Only owner"
-        );
-
-        let this = Contract {
-            owner_id: prev.owner_id,
-            treasury_id: prev.treasury_id,
-            old_market: prev.old_market,
-            market: UnorderedMap::new(StorageKey::MarketV3),
-            approved_ft_token_ids: prev.approved_ft_token_ids,
-            approved_nft_contract_ids: prev.approved_nft_contract_ids,
-            storage_deposits: prev.storage_deposits,
-            by_owner_id: prev.by_owner_id,
-            offers: UnorderedMap::new(StorageKey::OffersV2),
-            paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIdsV2),
-            transaction_fee: TransactionFee {
-                next_fee: None,
-                start_time: None,
-                current_fee
-            }
-        };
-
-        this
-    }
-
     // Changing treasury & ownership
 
     #[payable]
@@ -684,15 +654,16 @@ impl Contract {
 
         match offer_data {
             Some(offer) => {
-                let mut by_owner_id = self
+                let by_owner_id = self
                     .by_owner_id
-                    .get(&offer.buyer_id)
-                    .expect("Paras: no market data by account_id");
-                by_owner_id.remove(&contract_account_id_token_id);
-                if by_owner_id.is_empty() {
-                    self.by_owner_id.remove(&offer.buyer_id);
-                } else {
-                    self.by_owner_id.insert(&offer.buyer_id, &by_owner_id);
+                    .get(&offer.buyer_id);
+                if let Some(mut by_owner_id) = by_owner_id {
+                    by_owner_id.remove(&contract_account_id_token_id);
+                    if by_owner_id.is_empty() {
+                        self.by_owner_id.remove(&offer.buyer_id);
+                    } else {
+                        self.by_owner_id.insert(&offer.buyer_id, &by_owner_id);
+                    }
                 }
                 return Some(offer);
             }
@@ -1340,15 +1311,16 @@ impl Contract {
             };
 
         market_data.map(|market_data| {
-            let mut by_owner_id = self
+            let by_owner_id = self
                 .by_owner_id
-                .get(&market_data.owner_id)
-                .expect("No sale by owner_id");
-            by_owner_id.remove(&contract_and_token_id);
-            if by_owner_id.is_empty() {
+                .get(&market_data.owner_id);
+            if let Some(mut by_owner_id) = by_owner_id {
+                by_owner_id.remove(&contract_and_token_id);
+                if by_owner_id.is_empty() {
                 self.by_owner_id.remove(&market_data.owner_id);
-            } else {
+                } else {
                 self.by_owner_id.insert(&market_data.owner_id, &by_owner_id);
+                }
             }
             market_data
         })
