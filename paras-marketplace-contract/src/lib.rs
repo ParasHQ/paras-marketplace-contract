@@ -212,36 +212,6 @@ impl Contract {
         this
     }
 
-    #[init(ignore_state)]
-    pub fn migrate(current_fee: u16) -> Self {
-        let prev: Contract = env::state_read().expect("ERR_NOT_INITIALIZED");
-        assert_eq!(
-            env::predecessor_account_id(),
-            prev.owner_id,
-            "Paras: Only owner"
-        );
-
-        let this = Contract {
-            owner_id: prev.owner_id,
-            treasury_id: prev.treasury_id,
-            old_market: prev.old_market,
-            market: UnorderedMap::new(StorageKey::MarketV3),
-            approved_ft_token_ids: prev.approved_ft_token_ids,
-            approved_nft_contract_ids: prev.approved_nft_contract_ids,
-            storage_deposits: prev.storage_deposits,
-            by_owner_id: prev.by_owner_id,
-            offers: UnorderedMap::new(StorageKey::OffersV2),
-            paras_nft_contracts: UnorderedSet::new(StorageKey::ParasNFTContractIdsV2),
-            transaction_fee: TransactionFee {
-                next_fee: None,
-                start_time: None,
-                current_fee
-            }
-        };
-
-        this
-    }
-
     // Changing treasury & ownership
 
     #[payable]
