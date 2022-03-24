@@ -1328,11 +1328,8 @@ impl Contract {
         self.internal_delete_market_data(&nft_contract_id, &token_id);
         self.internal_delete_market_data(&buyer_nft_contract_id, &buyer_token_id);
 
-        let seller_contract_account_id_token_id = make_triple(
-            &nft_contract_id,
-            &seller_id,
-            &token_id,
-        );
+        let seller_contract_account_id_token_id =
+            make_triple(&nft_contract_id, &seller_id, &token_id);
         self.trades.remove(&seller_contract_account_id_token_id);
         self.trades.remove(&buyer_contract_account_id_token_id);
 
@@ -1394,11 +1391,8 @@ impl Contract {
         self.internal_delete_market_data(&nft_contract_id, &token_id);
         self.internal_delete_market_data(&buyer_nft_contract_id, &buyer_token_id);
 
-        let seller_contract_account_id_token_id = make_triple(
-            &nft_contract_id,
-            &seller_id,
-            &token_id,
-        );
+        let seller_contract_account_id_token_id =
+            make_triple(&nft_contract_id, &seller_id, &token_id);
         self.trades.remove(&seller_contract_account_id_token_id);
         self.trades.remove(&buyer_contract_account_id_token_id);
 
@@ -1700,6 +1694,18 @@ impl Contract {
         token_ids.insert(&contract_and_token_id);
 
         self.by_owner_id.insert(&owner_id, &token_ids);
+
+        // update offer trade approval_id
+        let owner_contract_account_id_token_id = make_triple(
+            &nft_contract_id,
+            &owner_id,
+            &token_id
+        );
+        let trade_data = self.trades.get(&owner_contract_account_id_token_id);
+        if let Some(mut trade_list) = trade_data{
+            trade_list.approval_id = approval_id;
+            self.trades.insert(&owner_contract_account_id_token_id, &trade_list);
+        }
 
         env::log_str(
             &json!({
