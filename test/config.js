@@ -21,10 +21,6 @@ module.exports = function getConfig(network = "testnet") {
         GAS: "300000000000000",
         gas: "300000000000000",
         gas_max: "300000000000000",
-        DEFAULT_NEW_ACCOUNT_AMOUNT: "2",
-        DEFAULT_NEW_CONTRACT_AMOUNT: "5",
-        GUESTS_ACCOUNT_SECRET:
-          "7UVfzoKZL4WZGF98C3Ue7tmmA6QamHCiB1Wd5pkxVPAc7j6jf3HXz5Y9cR93Y68BfGDtMLQ9Q29Njw5ZtzGhPxv",
       };
   }
 
