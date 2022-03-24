@@ -556,9 +556,9 @@ impl Contract {
                 &json!({
                     "type": "resolve_purchase",
                     "params": {
-                        "owner_id": market_data.owner_id,
-                        "nft_contract_id": market_data.nft_contract_id,
-                        "token_id": market_data.token_id,
+                        "owner_id": &market_data.owner_id,
+                        "nft_contract_id": &market_data.nft_contract_id,
+                        "token_id": &market_data.token_id,
                         "ft_token_id": market_data.ft_token_id,
                         "price": price,
                         "buyer_id": buyer_id,
@@ -566,6 +566,10 @@ impl Contract {
                 })
                 .to_string(),
             );
+
+            let seller_contract_account_id_token_id =
+                make_triple(&market_data.nft_contract_id, &market_data.owner_id, &market_data.token_id);
+            self.trades.remove(&seller_contract_account_id_token_id);
 
             return price;
         } else {
@@ -1001,13 +1005,14 @@ impl Contract {
                     Promise::new(receiver_id).transfer(amount.0);
                 }
             }
+
             env::log_str(
                 &json!({
                     "type": "resolve_purchase",
                     "params": {
                         "owner_id": seller_id,
-                        "nft_contract_id": offer_data.nft_contract_id,
-                        "token_id": token_id,
+                        "nft_contract_id": &offer_data.nft_contract_id,
+                        "token_id": &token_id,
                         "token_series_id": offer_data.token_series_id,
                         "ft_token_id": offer_data.ft_token_id,
                         "price": offer_data.price.to_string(),
@@ -1017,6 +1022,10 @@ impl Contract {
                 })
                 .to_string(),
             );
+
+            let seller_contract_account_id_token_id =
+                make_triple(&offer_data.nft_contract_id, &seller_id, &token_id);
+            self.trades.remove(&seller_contract_account_id_token_id);
 
             return offer_data.price.into();
         } else {
@@ -1241,9 +1250,11 @@ impl Contract {
                 return Some(trade);
             }
             None => {
-                self.trades.remove(&buyer_contract_account_id_token_id).expect("Paras: Error delete trade list");
-                return None
-            },
+                self.trades
+                    .remove(&buyer_contract_account_id_token_id)
+                    .expect("Paras: Error delete trade list");
+                return None;
+            }
         };
     }
 
@@ -2446,8 +2457,14 @@ mod tests {
             1,
         );
 
-        let trade_data =
-            contract.get_trade(accounts(3), accounts(2), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
+        let trade_data = contract.get_trade(
+            accounts(3),
+            accounts(2),
+            Some("1:1".to_string()),
+            None,
+            accounts(1),
+            "1:2".to_string(),
+        );
 
         assert_eq!(trade_data.buyer_id, accounts(2));
         assert_eq!(trade_data.buyer_nft_contract_id, accounts(1));
@@ -2480,8 +2497,21 @@ mod tests {
             .attached_deposit(1)
             .build());
 
-        contract.delete_trade(accounts(3), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
-        contract.get_trade(accounts(3), accounts(1), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
+        contract.delete_trade(
+            accounts(3),
+            Some("1:1".to_string()),
+            None,
+            accounts(1),
+            "1:2".to_string(),
+        );
+        contract.get_trade(
+            accounts(3),
+            accounts(1),
+            Some("1:1".to_string()),
+            None,
+            accounts(1),
+            "1:2".to_string(),
+        );
     }
 
     #[test]
