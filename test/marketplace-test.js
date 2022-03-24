@@ -8,6 +8,7 @@ const {
   marketplaceContractName,
   nftContractName,
   ownerAccount,
+  ownerAccountName,
   tokenOwnerAccount,
   bidderAccount,
   explorerUrl
@@ -21,7 +22,7 @@ describe("Paras Marketplace Contract", function () {
     try {
       await marketplaceContract.new({
         args: {
-          owner_id: marketplaceContractName,
+          owner_id: ownerAccountName,
           treasury_id: marketplaceContractName,
           approved_ft_token_ids: ["near"],
           paras_nft_contract: nftContractName,
@@ -38,7 +39,7 @@ describe("Paras Marketplace Contract", function () {
         "11111111111111111111111111111111"
       );
     }
-  }).timeout(10000);
+  }).timeout(20000);
 
   it("should add approved nft contract id" , async function() {
     try {
@@ -56,7 +57,7 @@ describe("Paras Marketplace Contract", function () {
     } catch (err) {
       console.warn(err)
     }
-  }).timeout(10000)
+  }).timeout(20000)
 
   it("should put token on auction and bid the token", async function () {
     try {
