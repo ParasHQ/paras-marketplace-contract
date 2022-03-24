@@ -567,8 +567,11 @@ impl Contract {
                 .to_string(),
             );
 
-            let seller_contract_account_id_token_id =
-                make_triple(&market_data.nft_contract_id, &market_data.owner_id, &market_data.token_id);
+            let seller_contract_account_id_token_id = make_triple(
+                &market_data.nft_contract_id,
+                &market_data.owner_id,
+                &market_data.token_id,
+            );
             self.trades.remove(&seller_contract_account_id_token_id);
 
             return price;
@@ -1322,17 +1325,16 @@ impl Contract {
 
         assert_eq!(trade_data.token_id.as_ref().unwrap(), &token_id);
 
-        let trade_data = self
-            .internal_delete_trade(
-                nft_contract_id.clone().into(),
-                buyer_id.clone(),
-                token_id.clone(),
-                buyer_nft_contract_id.clone(),
-                buyer_token_id.clone(),
-            )
-            .expect("Paras: Trade does not exist");
-
         self.internal_delete_market_data(&nft_contract_id, &token_id);
+        self.internal_delete_market_data(&buyer_nft_contract_id, &buyer_token_id);
+
+        let seller_contract_account_id_token_id = make_triple(
+            &nft_contract_id,
+            &seller_id,
+            &token_id,
+        );
+        self.trades.remove(&seller_contract_account_id_token_id);
+        self.trades.remove(&buyer_contract_account_id_token_id);
 
         // trade flow
         // buyer_nft -> seller_nft
@@ -1389,16 +1391,16 @@ impl Contract {
             &token_series_id
         );
 
-        self.internal_delete_trade(
-            nft_contract_id.clone().into(),
-            buyer_id.clone(),
-            token_series_id.clone(),
-            buyer_nft_contract_id.clone(),
-            buyer_token_id.clone(),
-        )
-        .expect("Paras: Trade does not exist");
-
         self.internal_delete_market_data(&nft_contract_id, &token_id);
+        self.internal_delete_market_data(&buyer_nft_contract_id, &buyer_token_id);
+
+        let seller_contract_account_id_token_id = make_triple(
+            &nft_contract_id,
+            &seller_id,
+            &token_id,
+        );
+        self.trades.remove(&seller_contract_account_id_token_id);
+        self.trades.remove(&buyer_contract_account_id_token_id);
 
         // trade flow
         // buyer_nft -> seller_nft
