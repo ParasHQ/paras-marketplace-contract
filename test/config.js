@@ -1,6 +1,5 @@
 const marketplaceContractName = "dev-1648023319907-58748753844114";
 const nftContractName = "paras-token-v1.testnet";
-const ftContractName = "dev-1631277489384-75412609538902";
 const ownerAccountName = "testingdo.testnet";
 
 module.exports = function getConfig(network = "testnet") {
@@ -12,7 +11,6 @@ module.exports = function getConfig(network = "testnet") {
     explorerUrl: "https://explorer.testnet.near.org",
     marketplaceContractName: marketplaceContractName,
     nftContractName: nftContractName,
-    ftContractName: ftContractName,
     ownerAccountName: ownerAccountName,
   };
 

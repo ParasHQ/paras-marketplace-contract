@@ -1,21 +1,13 @@
 const assert = require("assert");
 const testUtils = require("./test-utils");
-const nearAPI = require("near-api-js");
-const JSBI = require("jsbi");
-const { error } = require("console");
 
 const {
   gas,
-  gas_max,
   marketplaceContractAccount,
   marketplaceContract,
   marketplaceContractName,
-  nftContract,
   nftContractName,
-  ftContract,
-  ftContractName,
   ownerAccount,
-  ownerAccountName,
   tokenOwnerAccount,
   bidderAccount,
   explorerUrl

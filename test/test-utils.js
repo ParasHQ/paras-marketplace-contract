@@ -1,5 +1,3 @@
-const fs = require("fs");
-const BN = require("bn.js");
 const nearAPI = require("near-api-js");
 const {
   KeyPair,
@@ -8,22 +6,18 @@ const {
   utils: {
     format: { parseNearAmount },
   },
-  connect,
-  keyStores,
 } = nearAPI;
 const getConfig = require("./config");
 const {
   networkId,
   marketplaceContractName,
   nftContractName,
-  ftContractName,
   ownerAccountName,
   contractMethods,
   gas,
   gas_max,
   nodeUrl,
   walletUrl,
-  helperUrl,
   explorerUrl,
   DEFAULT_NEW_ACCOUNT_AMOUNT,
   DEFAULT_NEW_CONTRACT_AMOUNT,
@@ -130,11 +124,6 @@ const nftContract = new nearAPI.Contract(ownerAccount, nftContractName, {
   changeMethods: ["nft_transfer", "nft_transfer_call"],
 });
 
-const ftContract = new nearAPI.Contract(ownerAccount, ftContractName, {
-  viewMethods: ["ft_balance_of"],
-  changeMethods: ["ft_transfer", "ft_transfer_call", "storage_deposit"],
-});
-
 async function initContract() {
   try {
     await marketplaceContract.new({
@@ -236,11 +225,9 @@ module.exports = {
   marketplaceContractAccount,
   marketplaceContractName,
   nftContractName,
-  ftContractName,
   ownerAccountName,
   marketplaceContract,
   nftContract,
-  ftContract,
   ownerAccount,
   contractMethods,
   tokenOwnerAccount,

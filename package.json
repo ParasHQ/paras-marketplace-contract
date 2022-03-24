@@ -10,8 +10,6 @@
   },
   "dependencies": {
     "assert": "^2.0.0",
-    "bn.js": "^5.2.0",
-    "jsbi": "^4.2.0",
     "mocha": "^9.2.2",
     "near-api-js": "^0.44.2"
   }
