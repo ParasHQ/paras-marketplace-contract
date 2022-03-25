@@ -438,7 +438,7 @@ impl Contract {
                         for &value in payout.payout.values() {
                             remainder = remainder.checked_sub(value.0)?;
                         }
-                        if remainder == 0 || remainder == 1 {
+                        if remainder <= 100 {
                             Some(payout.payout)
                         } else {
                             None
@@ -452,7 +452,7 @@ impl Contract {
                         for &value in payout.values() {
                             remainder = remainder.checked_sub(value.0)?;
                         }
-                        if remainder == 0 || remainder == 1 {
+                        if remainder <= 100 {
                             Some(payout)
                         } else {
                             None
@@ -463,9 +463,6 @@ impl Contract {
         let payout = if let Some(payout_option) = payout_option {
             payout_option
         } else {
-            if market_data.ft_token_id == near_account() {
-                Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
-            }
             // leave function and return all FTs in ft_resolve_transfer
             env::log_str(
                 &json!({
