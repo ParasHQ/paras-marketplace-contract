@@ -1,12 +1,12 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::{U128, U64};
-use near_sdk::promise_result_as_success;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, near_bindgen, serde_json::json, AccountId, Balance,
     BorshStorageKey, CryptoHash, Gas, PanicOnDefault, Promise, Timestamp,
 };
+use near_sdk::{is_promise_success, promise_result_as_success};
 use std::collections::HashMap;
 
 use crate::external::*;
@@ -17,6 +17,8 @@ mod nft_callbacks;
 const GAS_FOR_NFT_TRANSFER: Gas = Gas(20_000_000_000_000);
 const BASE_GAS: Gas = Gas(5_000_000_000_000);
 const GAS_FOR_ROYALTIES: Gas = Gas(BASE_GAS.0 * 10u64);
+const GAS_FOR_CALLBACK_FIRST_TRADE: Gas = Gas(30_000_000_000_000);
+const GAS_FOR_CALLBACK_SECOND_TRADE: Gas = Gas(80_000_000_000_000);
 const NO_DEPOSIT: Balance = 0;
 const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
 
@@ -1333,25 +1335,16 @@ impl Contract {
         self.trades.remove(&seller_contract_account_id_token_id);
         self.trades.remove(&buyer_contract_account_id_token_id);
 
-        // trade flow
-        // buyer_nft -> seller_nft
-        // seller_nft -> buyer_nft
-        ext_contract::nft_transfer(
-            seller_id,
-            trade_data.buyer_token_id.clone().unwrap(),
+        self.trade_swap_nft(
+            buyer_id,
+            buyer_nft_contract_id,
+            buyer_token_id,
             trade_data.buyer_approval_id,
-            trade_data.buyer_nft_contract_id,
-            1,
-            GAS_FOR_NFT_TRANSFER,
-        )
-        .then(ext_contract::nft_transfer(
-            trade_data.buyer_id.clone(),
-            token_id.clone(),
-            approval_id,
+            seller_id,
             nft_contract_id,
-            1,
-            GAS_FOR_NFT_TRANSFER,
-        ))
+            token_id,
+            approval_id,
+        )
     }
 
     fn internal_accept_trade_series(
@@ -1396,25 +1389,155 @@ impl Contract {
         self.trades.remove(&seller_contract_account_id_token_id);
         self.trades.remove(&buyer_contract_account_id_token_id);
 
-        // trade flow
-        // buyer_nft -> seller_nft
-        // seller_nft -> buyer_nft
+        self.trade_swap_nft(
+            buyer_id,
+            buyer_nft_contract_id,
+            buyer_token_id,
+            trade_data.buyer_approval_id,
+            seller_id,
+            nft_contract_id,
+            token_id,
+            approval_id,
+        )
+    }
+
+    fn trade_swap_nft(
+        &mut self,
+        buyer_id: AccountId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
+        buyer_approval_id: u64,
+        seller_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+        seller_approval_id: u64,
+    ) -> Promise {
+        // 1. transfer buyer & seller NFT to marketplace
+        // 2. verify that those NFTs is valid and has approval_id
+        // 3. if those NFTs is valid then swap token to buyer & seller
+        // 4. if failed then rollback the NFT to buyer or seller
+
+        ext_contract::nft_transfer(
+            env::current_account_id(),
+            buyer_token_id.clone(),
+            Some(buyer_approval_id),
+            buyer_nft_contract_id.clone(),
+            1,
+            GAS_FOR_NFT_TRANSFER,
+        )
+        .then(ext_self::callback_first_trade(
+            seller_nft_contract_id.clone(),
+            seller_token_id.clone(),
+            seller_approval_id,
+            env::current_account_id(),
+            NO_DEPOSIT,
+            GAS_FOR_CALLBACK_FIRST_TRADE
+        ))
+        .then(ext_self::callback_second_trade(
+            buyer_id,
+            buyer_nft_contract_id.clone(),
+            buyer_token_id.clone(),
+            seller_id,
+            seller_nft_contract_id.clone(),
+            seller_token_id.clone(),
+            env::current_account_id(),
+            NO_DEPOSIT,
+            GAS_FOR_CALLBACK_SECOND_TRADE
+        ))
+    }
+
+    #[private]
+    pub fn callback_first_trade(
+        &mut self,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+        seller_approval_id: u64,
+    ) -> Promise {
+        if !is_promise_success() {
+            env::panic_str(&"Paras: buyer's nft failed to trade");
+        } else {
+            return ext_contract::nft_transfer(
+                env::current_account_id(),
+                seller_token_id.clone(),
+                Some(seller_approval_id),
+                seller_nft_contract_id.clone(),
+                1,
+                GAS_FOR_NFT_TRANSFER,
+            );
+        }
+    }
+
+    #[private]
+    pub fn callback_second_trade(
+        &mut self,
+        buyer_id: AccountId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
+        seller_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+    ){
+        if !is_promise_success() {
+            ext_contract::nft_transfer(
+                buyer_id,
+                buyer_token_id,
+                None,
+                buyer_nft_contract_id,
+                1,
+                GAS_FOR_NFT_TRANSFER,
+            );
+            env::panic_str(&"Paras: seller's nft failed to trade, rollback buyer's nft");
+        } else {
+            self.internal_swap_nft(
+                buyer_id,
+                buyer_nft_contract_id,
+                buyer_token_id,
+                seller_id,
+                seller_nft_contract_id,
+                seller_token_id,
+            );
+        }
+    }
+
+    fn internal_swap_nft(
+        &mut self,
+        buyer_id: AccountId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
+        seller_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+    ) {
         ext_contract::nft_transfer(
             seller_id,
-            trade_data.buyer_token_id.clone().unwrap(),
-            trade_data.buyer_approval_id,
-            trade_data.buyer_nft_contract_id,
+            buyer_token_id.clone(),
+            None,
+            buyer_nft_contract_id.clone(),
             1,
             GAS_FOR_NFT_TRANSFER,
         )
         .then(ext_contract::nft_transfer(
-            trade_data.buyer_id.clone(),
-            token_id.clone(),
-            approval_id,
-            nft_contract_id,
+            buyer_id.clone(),
+            seller_token_id.clone(),
+            None,
+            seller_nft_contract_id.clone(),
             1,
             GAS_FOR_NFT_TRANSFER,
-        ))
+        ));
+        
+        env::log_str(
+            &json!({
+                "type": "accept_trade",
+                "params": {
+                    "buyer_id": buyer_id,
+                    "nft_contract_id": seller_nft_contract_id,
+                    "token_id": seller_token_id,
+                    "buyer_nft_contract_id": buyer_nft_contract_id,
+                    "buyer_token_id": buyer_token_id,
+                }
+            })
+            .to_string(),
+        );
     }
 
     // Auction bids
@@ -1696,15 +1819,13 @@ impl Contract {
         self.by_owner_id.insert(&owner_id, &token_ids);
 
         // update offer trade approval_id
-        let owner_contract_account_id_token_id = make_triple(
-            &nft_contract_id,
-            &owner_id,
-            &token_id
-        );
+        let owner_contract_account_id_token_id =
+            make_triple(&nft_contract_id, &owner_id, &token_id);
         let trade_data = self.trades.get(&owner_contract_account_id_token_id);
-        if let Some(mut trade_list) = trade_data{
+        if let Some(mut trade_list) = trade_data {
             trade_list.approval_id = approval_id;
-            self.trades.insert(&owner_contract_account_id_token_id, &trade_list);
+            self.trades
+                .insert(&owner_contract_account_id_token_id, &trade_list);
         }
 
         env::log_str(
@@ -2004,6 +2125,23 @@ trait ExtSelf {
         seller_id: AccountId,
         offer_data: OfferData,
         token_id: TokenId,
+    ) -> Promise;
+
+    fn callback_first_trade(
+        &mut self,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+        seller_approval_id: u64,
+    ) -> Promise;
+
+    fn callback_second_trade(
+        &mut self,
+        buyer_id: AccountId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
+        seller_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
     ) -> Promise;
 }
 
