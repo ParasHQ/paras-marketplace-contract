@@ -1252,20 +1252,20 @@ impl Contract {
 
     pub fn get_trade(
         &self,
-        nft_contract_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: Option<TokenId>,
+        seller_token_series_id: Option<String>,
         buyer_id: AccountId,
-        token_id: Option<TokenId>,
-        token_series_id: Option<String>,
         buyer_nft_contract_id: AccountId,
         buyer_token_id: TokenId,
     ) -> TradeData {
-        let token = if token_id.is_some() {
-            token_id.as_ref().unwrap()
+        let token = if seller_token_id.is_some() {
+            seller_token_id.as_ref().unwrap()
         } else {
-            token_series_id.as_ref().unwrap()
+            seller_token_series_id.as_ref().unwrap()
         };
 
-        let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token);
+        let contract_account_id_token_id = make_triple(&seller_nft_contract_id, &buyer_id, &token);
         let buyer_contract_account_id_token_id =
             make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
 
@@ -1279,7 +1279,7 @@ impl Contract {
             .get(&contract_account_id_token_id)
             .expect("Paras: Trade data does not exist");
 
-        if token_id.is_some() {
+        if seller_token_id.is_some() {
             assert_eq!(trade_data.token_id.as_ref().unwrap(), token);
         } else {
             assert_eq!(trade_data.token_series_id.as_ref().unwrap(), token);
@@ -2592,9 +2592,9 @@ mod tests {
 
         let trade_data = contract.get_trade(
             accounts(3),
-            accounts(2),
             Some("1:1".to_string()),
             None,
+            accounts(2),
             accounts(1),
             "1:2".to_string(),
         );
@@ -2639,9 +2639,9 @@ mod tests {
         );
         contract.get_trade(
             accounts(3),
-            accounts(1),
             Some("1:1".to_string()),
             None,
+            accounts(1),
             accounts(1),
             "1:2".to_string(),
         );
