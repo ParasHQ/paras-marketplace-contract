@@ -1319,6 +1319,13 @@ impl Contract {
 
         let seller_contract_account_id_token_id =
             make_triple(&nft_contract_id, &seller_id, &token_id);
+
+        if let Some(mut trades) = self.trades.get(&seller_contract_account_id_token_id){
+            trades.trade_data.clear();
+        }
+        if let Some(mut trades) = self.trades.get(&buyer_contract_account_id_token_id){
+            trades.trade_data.clear();
+        }
         self.trades.remove(&seller_contract_account_id_token_id);
         self.trades.remove(&buyer_contract_account_id_token_id);
 
