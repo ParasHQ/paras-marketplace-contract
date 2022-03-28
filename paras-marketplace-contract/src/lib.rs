@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::{U128, U64};
-use near_sdk::promise_result_as_success;
+use near_sdk::{is_promise_success, promise_result_as_success};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, near_bindgen, serde_json::json, AccountId, Balance,
@@ -464,6 +464,11 @@ impl Contract {
             payout_option
         } else {
             // leave function and return all FTs in ft_resolve_transfer
+            if !is_promise_success() {
+                if market_data.ft_token_id == near_account() {
+                    Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
+                }
+            }
             env::log_str(
                 &json!({
                     "type": "resolve_purchase_fail",
@@ -770,6 +775,9 @@ impl Contract {
         price: u128,
     ) -> Promise {
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
+
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+
         let offer_data = self
             .offers
             .get(&contract_account_id_token_id)
@@ -786,7 +794,6 @@ impl Contract {
             )
             .expect("Paras: Offer does not exist");
 
-        self.internal_delete_market_data(&nft_contract_id, &token_id);
 
         ext_contract::nft_transfer_payout(
             offer_data.buyer_id.clone(),
@@ -825,6 +832,8 @@ impl Contract {
         let contract_account_id_token_id =
             make_triple(&nft_contract_id, &buyer_id, &token_series_id);
 
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+
         let offer_data = self
             .offers
             .get(&contract_account_id_token_id)
@@ -842,8 +851,6 @@ impl Contract {
             token_series_id.clone(),
         )
         .expect("Paras: Offer does not exist");
-
-        self.internal_delete_market_data(&nft_contract_id, &token_id);
 
         ext_contract::nft_transfer_payout(
             offer_data.buyer_id.clone(),
