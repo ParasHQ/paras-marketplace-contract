@@ -112,7 +112,7 @@ pub struct OfferDataJson {
     price: U128,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TradeData {
     pub nft_contract_id: AccountId,
@@ -154,7 +154,7 @@ pub struct ContractV2 {
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct TradeList {
     pub approval_id: u64,
-    pub trade_data: UnorderedMap<ContractAccountIdTokenId, TradeData>,
+    pub trade_data: HashMap<ContractAccountIdTokenId, TradeData>,
 }
 
 #[near_bindgen]
@@ -1112,20 +1112,13 @@ impl Contract {
             .unwrap_or_else(|| {
                 TradeList {
                     approval_id: 0, //init
-                    trade_data: UnorderedMap::new(
-                        //init
-                        StorageKey::TradeList {
-                            contract_account_id_token_id_hash: hash_contract_account_id_token_id(
-                                &buyer_contract_account_id_token_id,
-                            ),
-                        },
-                    ),
+                    trade_data: HashMap::new(),
                 }
             });
         buyer_trade_list.approval_id = buyer_approval_id;
         buyer_trade_list
             .trade_data
-            .insert(&contract_account_id_token_id, &trade_data);
+            .insert(contract_account_id_token_id.clone(), trade_data);
 
         self.trades
             .insert(&buyer_contract_account_id_token_id, &buyer_trade_list);
@@ -1139,6 +1132,7 @@ impl Contract {
                 .unwrap(),
             )
         });
+
         token_ids.insert(&make_key_owner_by_id_trade(contract_account_id_token_id));
         self.by_owner_id.insert(&buyer_id, &token_ids);
     }
@@ -1175,9 +1169,9 @@ impl Contract {
             .expect("Paras: Trade data does not exist");
 
         if token_id.is_some() {
-            assert_eq!(trade_data.token_id.unwrap(), token)
+            assert_eq!(trade_data.clone().token_id.unwrap(), token)
         } else {
-            assert_eq!(trade_data.token_series_id.unwrap(), token)
+            assert_eq!(trade_data.clone().token_series_id.unwrap(), token)
         }
 
         self.internal_delete_trade(
@@ -1285,7 +1279,7 @@ impl Contract {
             assert_eq!(trade_data.token_series_id.as_ref().unwrap(), token);
         }
 
-        return trade_data;
+        return trade_data.clone()
     }
 
     fn internal_accept_trade(
