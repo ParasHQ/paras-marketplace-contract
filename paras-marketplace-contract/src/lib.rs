@@ -115,13 +115,9 @@ pub struct OfferDataJson {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TradeData {
-    pub buyer_id: AccountId,
     pub nft_contract_id: AccountId,
     pub token_id: Option<TokenId>,
     pub token_series_id: Option<TokenSeriesId>,
-    pub buyer_nft_contract_id: AccountId,
-    pub buyer_token_id: Option<TokenId>,
-    pub buyer_approval_id: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1106,13 +1102,9 @@ impl Contract {
         );
 
         let trade_data = TradeData {
-            buyer_id: buyer_id.clone().into(),
             nft_contract_id: nft_contract_id.into(),
             token_id: token_id,
             token_series_id: token_series_id,
-            buyer_nft_contract_id: buyer_nft_contract_id.into(),
-            buyer_token_id: buyer_token_id,
-            buyer_approval_id: buyer_approval_id,
         };
         let mut buyer_trade_list = self
             .trades
@@ -1188,11 +1180,6 @@ impl Contract {
             assert_eq!(trade_data.token_series_id.unwrap(), token)
         }
 
-        assert_eq!(
-            trade_data.buyer_id, buyer_id,
-            "Paras: Caller not trade's buyer"
-        );
-
         self.internal_delete_trade(
             nft_contract_id.clone().into(),
             buyer_id.clone(),
@@ -1244,13 +1231,13 @@ impl Contract {
             Some(trade) => {
                 let mut by_owner_id = self
                     .by_owner_id
-                    .get(&trade.buyer_id)
+                    .get(&buyer_id)
                     .expect("Paras: no market data by account_id");
                 by_owner_id.remove(&make_key_owner_by_id_trade(contract_account_id_token_id));
                 if by_owner_id.is_empty() {
-                    self.by_owner_id.remove(&trade.buyer_id);
+                    self.by_owner_id.remove(&buyer_id);
                 } else {
-                    self.by_owner_id.insert(&trade.buyer_id, &by_owner_id);
+                    self.by_owner_id.insert(&buyer_id, &by_owner_id);
                 }
                 return Some(trade);
             }
@@ -1339,7 +1326,7 @@ impl Contract {
             buyer_id,
             buyer_nft_contract_id,
             buyer_token_id,
-            trade_data.buyer_approval_id,
+            trade_list.approval_id,
             seller_id,
             nft_contract_id,
             token_id,
@@ -1393,7 +1380,7 @@ impl Contract {
             buyer_id,
             buyer_nft_contract_id,
             buyer_token_id,
-            trade_data.buyer_approval_id,
+            trade_list.approval_id,
             seller_id,
             nft_contract_id,
             token_id,
@@ -1431,7 +1418,7 @@ impl Contract {
             seller_approval_id,
             env::current_account_id(),
             NO_DEPOSIT,
-            GAS_FOR_CALLBACK_FIRST_TRADE
+            GAS_FOR_CALLBACK_FIRST_TRADE,
         ))
         .then(ext_self::callback_second_trade(
             buyer_id,
@@ -1442,7 +1429,7 @@ impl Contract {
             seller_token_id.clone(),
             env::current_account_id(),
             NO_DEPOSIT,
-            GAS_FOR_CALLBACK_SECOND_TRADE
+            GAS_FOR_CALLBACK_SECOND_TRADE,
         ))
     }
 
@@ -1476,7 +1463,7 @@ impl Contract {
         seller_id: AccountId,
         seller_nft_contract_id: AccountId,
         seller_token_id: TokenId,
-    ){
+    ) {
         if !is_promise_success() {
             ext_contract::nft_transfer(
                 buyer_id,
@@ -1524,7 +1511,7 @@ impl Contract {
             1,
             GAS_FOR_NFT_TRANSFER,
         ));
-        
+
         env::log_str(
             &json!({
                 "type": "accept_trade",
@@ -2612,8 +2599,8 @@ mod tests {
             "1:2".to_string(),
         );
 
-        assert_eq!(trade_data.buyer_id, accounts(2));
-        assert_eq!(trade_data.buyer_nft_contract_id, accounts(1));
+        assert_eq!(trade_data.token_id.unwrap().to_string(), "1:1");
+        assert_eq!(trade_data.nft_contract_id, accounts(3));
     }
 
     #[test]
