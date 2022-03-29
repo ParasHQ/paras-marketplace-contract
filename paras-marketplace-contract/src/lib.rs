@@ -1497,7 +1497,7 @@ impl Contract {
         seller_token_id: TokenId,
     ) {
         ext_contract::nft_transfer(
-            seller_id,
+            seller_id.clone(),
             buyer_token_id.clone(),
             None,
             buyer_nft_contract_id.clone(),
@@ -1517,6 +1517,7 @@ impl Contract {
             &json!({
                 "type": "accept_trade",
                 "params": {
+                    "sender_id": seller_id,
                     "buyer_id": buyer_id,
                     "nft_contract_id": seller_nft_contract_id,
                     "token_id": seller_token_id,
