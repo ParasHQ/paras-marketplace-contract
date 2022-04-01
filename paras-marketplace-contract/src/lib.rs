@@ -195,9 +195,6 @@ pub enum StorageKey {
     OffersV2,
     ParasNFTContractIdsV2,
     Trade,
-    TradeList {
-        contract_account_id_token_id_hash: CryptoHash,
-    },
 }
 
 #[near_bindgen]
