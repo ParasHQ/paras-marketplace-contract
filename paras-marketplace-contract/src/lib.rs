@@ -265,7 +265,6 @@ impl Contract {
 
         this
     }
-
     // Changing treasury & ownership
 
     #[payable]
@@ -492,33 +491,37 @@ impl Contract {
                         for &value in payout.payout.values() {
                             remainder = remainder.checked_sub(value.0)?;
                         }
-                        if remainder == 0 || remainder == 1 {
+                        if remainder <= 100 {
                             Some(payout.payout)
                         } else {
                             None
                         }
                     })
             } else {
-                parsed_payout.ok().and_then(|payout| {
-                    let mut remainder = price.0;
-                    for &value in payout.values() {
-                        remainder = remainder.checked_sub(value.0)?;
-                    }
-                    if remainder == 0 || remainder == 1 {
-                        Some(payout)
-                    } else {
-                        None
-                    }
-                })
+                parsed_payout
+                    .ok()
+                    .and_then(|payout| {
+                        let mut remainder = price.0;
+                        for &value in payout.values() {
+                            remainder = remainder.checked_sub(value.0)?;
+                        }
+                        if remainder <= 100 {
+                            Some(payout)
+                        } else {
+                            None
+                        }
+                    })
             }
         });
         let payout = if let Some(payout_option) = payout_option {
             payout_option
         } else {
-            if market_data.ft_token_id == near_account() {
-                Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
-            }
             // leave function and return all FTs in ft_resolve_transfer
+            if !is_promise_success() {
+                if market_data.ft_token_id == near_account() {
+                    Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
+                }
+            }
             env::log_str(
                 &json!({
                     "type": "resolve_purchase_fail",
@@ -713,15 +716,16 @@ impl Contract {
 
         match offer_data {
             Some(offer) => {
-                let mut by_owner_id = self
+                let by_owner_id = self
                     .by_owner_id
-                    .get(&offer.buyer_id)
-                    .expect("Paras: no market data by account_id");
-                by_owner_id.remove(&contract_account_id_token_id);
-                if by_owner_id.is_empty() {
-                    self.by_owner_id.remove(&offer.buyer_id);
-                } else {
-                    self.by_owner_id.insert(&offer.buyer_id, &by_owner_id);
+                    .get(&offer.buyer_id);
+                if let Some(mut by_owner_id) = by_owner_id {
+                    by_owner_id.remove(&contract_account_id_token_id);
+                    if by_owner_id.is_empty() {
+                        self.by_owner_id.remove(&offer.buyer_id);
+                    } else {
+                        self.by_owner_id.insert(&offer.buyer_id, &by_owner_id);
+                    }
                 }
                 return Some(offer);
             }
@@ -831,6 +835,9 @@ impl Contract {
         price: u128,
     ) -> Promise {
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
+
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+
         let offer_data = self
             .offers
             .get(&contract_account_id_token_id)
@@ -847,7 +854,6 @@ impl Contract {
             )
             .expect("Paras: Offer does not exist");
 
-        self.internal_delete_market_data(&nft_contract_id, &token_id);
 
         ext_contract::nft_transfer_payout(
             offer_data.buyer_id.clone(),
@@ -886,6 +892,8 @@ impl Contract {
         let contract_account_id_token_id =
             make_triple(&nft_contract_id, &buyer_id, &token_series_id);
 
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+
         let offer_data = self
             .offers
             .get(&contract_account_id_token_id)
@@ -903,8 +911,6 @@ impl Contract {
             token_series_id.clone(),
         )
         .expect("Paras: Offer does not exist");
-
-        self.internal_delete_market_data(&nft_contract_id, &token_id);
 
         ext_contract::nft_transfer_payout(
             offer_data.buyer_id.clone(),
@@ -1881,15 +1887,16 @@ impl Contract {
             };
 
         market_data.map(|market_data| {
-            let mut by_owner_id = self
+            let by_owner_id = self
                 .by_owner_id
-                .get(&market_data.owner_id)
-                .expect("No sale by owner_id");
-            by_owner_id.remove(&contract_and_token_id);
-            if by_owner_id.is_empty() {
+                .get(&market_data.owner_id);
+            if let Some(mut by_owner_id) = by_owner_id {
+                by_owner_id.remove(&contract_and_token_id);
+                if by_owner_id.is_empty() {
                 self.by_owner_id.remove(&market_data.owner_id);
-            } else {
+                } else {
                 self.by_owner_id.insert(&market_data.owner_id, &by_owner_id);
+                }
             }
             market_data
         })
