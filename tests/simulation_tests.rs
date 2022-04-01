@@ -435,7 +435,7 @@ fn test_accept_trade(){
         "storage_deposit",
         &json!({}).to_string().into_bytes(),
         DEFAULT_GAS,
-        STORAGE_ADD_MARKET_DATA,
+        STORAGE_ADD_MARKET_DATA * 2,
     )
     .assert_success();
 
@@ -484,6 +484,33 @@ fn test_accept_trade(){
         DEFAULT_GAS,
         10u128.pow(24),
     ).assert_success();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:2",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:1",
+            }}.to_string()
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    darmaji.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
 
     //after chandra trade his nft the result should be
     //chadra's token_id = 1:2

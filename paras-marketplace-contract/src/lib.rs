@@ -1,12 +1,12 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::{U128, U64};
-use near_sdk::promise_result_as_success;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, near_bindgen, serde_json::json, AccountId, Balance,
     BorshStorageKey, CryptoHash, Gas, PanicOnDefault, Promise, Timestamp,
 };
+use near_sdk::{is_promise_success, promise_result_as_success};
 use std::collections::HashMap;
 
 use crate::external::*;
@@ -17,6 +17,8 @@ mod nft_callbacks;
 const GAS_FOR_NFT_TRANSFER: Gas = Gas(20_000_000_000_000);
 const BASE_GAS: Gas = Gas(5_000_000_000_000);
 const GAS_FOR_ROYALTIES: Gas = Gas(BASE_GAS.0 * 10u64);
+const GAS_FOR_CALLBACK_FIRST_TRADE: Gas = Gas(30_000_000_000_000);
+const GAS_FOR_CALLBACK_SECOND_TRADE: Gas = Gas(80_000_000_000_000);
 const NO_DEPOSIT: Balance = 0;
 const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
 
@@ -110,16 +112,16 @@ pub struct OfferDataJson {
     price: U128,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TradeData {
-    pub buyer_id: AccountId,
+    pub buyer_amount: Option<Balance>,
+    pub seller_amount: Option<Balance>,
+    pub ft_token_id: Option<String>,
+    pub is_active: Option<bool>,
     pub nft_contract_id: AccountId,
     pub token_id: Option<TokenId>,
     pub token_series_id: Option<TokenSeriesId>,
-    pub buyer_nft_contract_id: AccountId,
-    pub buyer_token_id: Option<TokenId>,
-    pub buyer_approval_id: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -156,7 +158,7 @@ pub struct ContractV2 {
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct TradeList {
     pub approval_id: u64,
-    pub trade_data: UnorderedMap<ContractAccountIdTokenId, TradeData>,
+    pub trade_data: HashMap<ContractAccountIdTokenId, TradeData>,
 }
 
 #[near_bindgen]
@@ -556,9 +558,9 @@ impl Contract {
                 &json!({
                     "type": "resolve_purchase",
                     "params": {
-                        "owner_id": market_data.owner_id,
-                        "nft_contract_id": market_data.nft_contract_id,
-                        "token_id": market_data.token_id,
+                        "owner_id": &market_data.owner_id,
+                        "nft_contract_id": &market_data.nft_contract_id,
+                        "token_id": &market_data.token_id,
                         "ft_token_id": market_data.ft_token_id,
                         "price": price,
                         "buyer_id": buyer_id,
@@ -566,6 +568,13 @@ impl Contract {
                 })
                 .to_string(),
             );
+
+            let seller_contract_account_id_token_id = make_triple(
+                &market_data.nft_contract_id,
+                &market_data.owner_id,
+                &market_data.token_id,
+            );
+            self.trades.remove(&seller_contract_account_id_token_id);
 
             return price;
         } else {
@@ -1001,13 +1010,14 @@ impl Contract {
                     Promise::new(receiver_id).transfer(amount.0);
                 }
             }
+
             env::log_str(
                 &json!({
                     "type": "resolve_purchase",
                     "params": {
                         "owner_id": seller_id,
-                        "nft_contract_id": offer_data.nft_contract_id,
-                        "token_id": token_id,
+                        "nft_contract_id": &offer_data.nft_contract_id,
+                        "token_id": &token_id,
                         "token_series_id": offer_data.token_series_id,
                         "ft_token_id": offer_data.ft_token_id,
                         "price": offer_data.price.to_string(),
@@ -1017,6 +1027,10 @@ impl Contract {
                 })
                 .to_string(),
             );
+
+            let seller_contract_account_id_token_id =
+                make_triple(&offer_data.nft_contract_id, &seller_id, &token_id);
+            self.trades.remove(&seller_contract_account_id_token_id);
 
             return offer_data.price.into();
         } else {
@@ -1092,13 +1106,13 @@ impl Contract {
         );
 
         let trade_data = TradeData {
-            buyer_id: buyer_id.clone().into(),
+            buyer_amount: None,
+            seller_amount: None,
+            is_active: None,
+            ft_token_id: None,
             nft_contract_id: nft_contract_id.into(),
             token_id: token_id,
             token_series_id: token_series_id,
-            buyer_nft_contract_id: buyer_nft_contract_id.into(),
-            buyer_token_id: buyer_token_id,
-            buyer_approval_id: buyer_approval_id,
         };
         let mut buyer_trade_list = self
             .trades
@@ -1106,20 +1120,13 @@ impl Contract {
             .unwrap_or_else(|| {
                 TradeList {
                     approval_id: 0, //init
-                    trade_data: UnorderedMap::new(
-                        //init
-                        StorageKey::TradeList {
-                            contract_account_id_token_id_hash: hash_contract_account_id_token_id(
-                                &buyer_contract_account_id_token_id,
-                            ),
-                        },
-                    ),
+                    trade_data: HashMap::new(),
                 }
             });
         buyer_trade_list.approval_id = buyer_approval_id;
         buyer_trade_list
             .trade_data
-            .insert(&contract_account_id_token_id, &trade_data);
+            .insert(contract_account_id_token_id.clone(), trade_data);
 
         self.trades
             .insert(&buyer_contract_account_id_token_id, &buyer_trade_list);
@@ -1133,6 +1140,7 @@ impl Contract {
                 .unwrap(),
             )
         });
+
         token_ids.insert(&make_key_owner_by_id_trade(contract_account_id_token_id));
         self.by_owner_id.insert(&buyer_id, &token_ids);
     }
@@ -1169,15 +1177,10 @@ impl Contract {
             .expect("Paras: Trade data does not exist");
 
         if token_id.is_some() {
-            assert_eq!(trade_data.token_id.unwrap(), token)
+            assert_eq!(trade_data.clone().token_id.unwrap(), token)
         } else {
-            assert_eq!(trade_data.token_series_id.unwrap(), token)
+            assert_eq!(trade_data.clone().token_series_id.unwrap(), token)
         }
-
-        assert_eq!(
-            trade_data.buyer_id, buyer_id,
-            "Paras: Caller not trade's buyer"
-        );
 
         self.internal_delete_trade(
             nft_contract_id.clone().into(),
@@ -1230,39 +1233,41 @@ impl Contract {
             Some(trade) => {
                 let mut by_owner_id = self
                     .by_owner_id
-                    .get(&trade.buyer_id)
+                    .get(&buyer_id)
                     .expect("Paras: no market data by account_id");
                 by_owner_id.remove(&make_key_owner_by_id_trade(contract_account_id_token_id));
                 if by_owner_id.is_empty() {
-                    self.by_owner_id.remove(&trade.buyer_id);
+                    self.by_owner_id.remove(&buyer_id);
                 } else {
-                    self.by_owner_id.insert(&trade.buyer_id, &by_owner_id);
+                    self.by_owner_id.insert(&buyer_id, &by_owner_id);
                 }
                 return Some(trade);
             }
             None => {
-                self.trades.remove(&buyer_contract_account_id_token_id).expect("Paras: Error delete trade list");
-                return None
-            },
+                self.trades
+                    .remove(&buyer_contract_account_id_token_id)
+                    .expect("Paras: Error delete trade list");
+                return None;
+            }
         };
     }
 
     pub fn get_trade(
         &self,
-        nft_contract_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: Option<TokenId>,
+        seller_token_series_id: Option<String>,
         buyer_id: AccountId,
-        token_id: Option<TokenId>,
-        token_series_id: Option<String>,
         buyer_nft_contract_id: AccountId,
         buyer_token_id: TokenId,
     ) -> TradeData {
-        let token = if token_id.is_some() {
-            token_id.as_ref().unwrap()
+        let token = if seller_token_id.is_some() {
+            seller_token_id.as_ref().unwrap()
         } else {
-            token_series_id.as_ref().unwrap()
+            seller_token_series_id.as_ref().unwrap()
         };
 
-        let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token);
+        let contract_account_id_token_id = make_triple(&seller_nft_contract_id, &buyer_id, &token);
         let buyer_contract_account_id_token_id =
             make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
 
@@ -1276,13 +1281,13 @@ impl Contract {
             .get(&contract_account_id_token_id)
             .expect("Paras: Trade data does not exist");
 
-        if token_id.is_some() {
+        if seller_token_id.is_some() {
             assert_eq!(trade_data.token_id.as_ref().unwrap(), token);
         } else {
             assert_eq!(trade_data.token_series_id.as_ref().unwrap(), token);
         }
 
-        return trade_data;
+        return trade_data.clone()
     }
 
     fn internal_accept_trade(
@@ -1311,37 +1316,31 @@ impl Contract {
 
         assert_eq!(trade_data.token_id.as_ref().unwrap(), &token_id);
 
-        let trade_data = self
-            .internal_delete_trade(
-                nft_contract_id.clone().into(),
-                buyer_id.clone(),
-                token_id.clone(),
-                buyer_nft_contract_id.clone(),
-                buyer_token_id.clone(),
-            )
-            .expect("Paras: Trade does not exist");
-
         self.internal_delete_market_data(&nft_contract_id, &token_id);
+        self.internal_delete_market_data(&buyer_nft_contract_id, &buyer_token_id);
 
-        // trade flow
-        // buyer_nft -> seller_nft
-        // seller_nft -> buyer_nft
-        ext_contract::nft_transfer(
+        let seller_contract_account_id_token_id =
+            make_triple(&nft_contract_id, &seller_id, &token_id);
+
+        if let Some(mut trades) = self.trades.get(&seller_contract_account_id_token_id){
+            trades.trade_data.clear();
+        }
+        if let Some(mut trades) = self.trades.get(&buyer_contract_account_id_token_id){
+            trades.trade_data.clear();
+        }
+        self.trades.remove(&seller_contract_account_id_token_id);
+        self.trades.remove(&buyer_contract_account_id_token_id);
+
+        self.trade_swap_nft(
+            buyer_id,
+            buyer_nft_contract_id,
+            buyer_token_id,
+            trade_list.approval_id,
             seller_id,
-            trade_data.buyer_token_id.clone().unwrap(),
-            trade_data.buyer_approval_id,
-            trade_data.buyer_nft_contract_id,
-            1,
-            GAS_FOR_NFT_TRANSFER,
-        )
-        .then(ext_contract::nft_transfer(
-            trade_data.buyer_id.clone(),
-            token_id.clone(),
-            approval_id,
             nft_contract_id,
-            1,
-            GAS_FOR_NFT_TRANSFER,
-        ))
+            token_id,
+            approval_id,
+        )
     }
 
     fn internal_accept_trade_series(
@@ -1378,36 +1377,164 @@ impl Contract {
             &token_series_id
         );
 
-        self.internal_delete_trade(
-            nft_contract_id.clone().into(),
-            buyer_id.clone(),
-            token_series_id.clone(),
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+        self.internal_delete_market_data(&buyer_nft_contract_id, &buyer_token_id);
+
+        let seller_contract_account_id_token_id =
+            make_triple(&nft_contract_id, &seller_id, &token_id);
+        self.trades.remove(&seller_contract_account_id_token_id);
+        self.trades.remove(&buyer_contract_account_id_token_id);
+
+        self.trade_swap_nft(
+            buyer_id,
+            buyer_nft_contract_id,
+            buyer_token_id,
+            trade_list.approval_id,
+            seller_id,
+            nft_contract_id,
+            token_id,
+            approval_id,
+        )
+    }
+
+    fn trade_swap_nft(
+        &mut self,
+        buyer_id: AccountId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
+        buyer_approval_id: u64,
+        seller_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+        seller_approval_id: u64,
+    ) -> Promise {
+        // 1. transfer buyer & seller NFT to marketplace
+        // 2. verify that those NFTs is valid and has approval_id
+        // 3. if those NFTs is valid then swap token to buyer & seller
+        // 4. if failed then rollback the NFT to buyer or seller
+
+        ext_contract::nft_transfer(
+            env::current_account_id(),
+            buyer_token_id.clone(),
+            Some(buyer_approval_id),
+            buyer_nft_contract_id.clone(),
+            1,
+            GAS_FOR_NFT_TRANSFER,
+        )
+        .then(ext_self::callback_first_trade(
+            seller_nft_contract_id.clone(),
+            seller_token_id.clone(),
+            seller_approval_id,
+            env::current_account_id(),
+            NO_DEPOSIT,
+            GAS_FOR_CALLBACK_FIRST_TRADE,
+        ))
+        .then(ext_self::callback_second_trade(
+            buyer_id,
             buyer_nft_contract_id.clone(),
             buyer_token_id.clone(),
-        )
-        .expect("Paras: Trade does not exist");
-
-        self.internal_delete_market_data(&nft_contract_id, &token_id);
-
-        // trade flow
-        // buyer_nft -> seller_nft
-        // seller_nft -> buyer_nft
-        ext_contract::nft_transfer(
             seller_id,
-            trade_data.buyer_token_id.clone().unwrap(),
-            trade_data.buyer_approval_id,
-            trade_data.buyer_nft_contract_id,
+            seller_nft_contract_id.clone(),
+            seller_token_id.clone(),
+            env::current_account_id(),
+            NO_DEPOSIT,
+            GAS_FOR_CALLBACK_SECOND_TRADE,
+        ))
+    }
+
+    #[private]
+    pub fn callback_first_trade(
+        &mut self,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+        seller_approval_id: u64,
+    ) -> Promise {
+        if !is_promise_success() {
+            env::panic_str(&"Paras: buyer's nft failed to trade");
+        } else {
+            return ext_contract::nft_transfer(
+                env::current_account_id(),
+                seller_token_id.clone(),
+                Some(seller_approval_id),
+                seller_nft_contract_id.clone(),
+                1,
+                GAS_FOR_NFT_TRANSFER,
+            );
+        }
+    }
+
+    #[private]
+    pub fn callback_second_trade(
+        &mut self,
+        buyer_id: AccountId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
+        seller_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+    ) {
+        if !is_promise_success() {
+            ext_contract::nft_transfer(
+                buyer_id,
+                buyer_token_id,
+                None,
+                buyer_nft_contract_id,
+                1,
+                GAS_FOR_NFT_TRANSFER,
+            );
+            env::panic_str(&"Paras: seller's nft failed to trade, rollback buyer's nft");
+        } else {
+            self.internal_swap_nft(
+                buyer_id,
+                buyer_nft_contract_id,
+                buyer_token_id,
+                seller_id,
+                seller_nft_contract_id,
+                seller_token_id,
+            );
+        }
+    }
+
+    fn internal_swap_nft(
+        &mut self,
+        buyer_id: AccountId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
+        seller_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+    ) {
+        ext_contract::nft_transfer(
+            seller_id.clone(),
+            buyer_token_id.clone(),
+            None,
+            buyer_nft_contract_id.clone(),
             1,
             GAS_FOR_NFT_TRANSFER,
         )
         .then(ext_contract::nft_transfer(
-            trade_data.buyer_id.clone(),
-            token_id.clone(),
-            approval_id,
-            nft_contract_id,
+            buyer_id.clone(),
+            seller_token_id.clone(),
+            None,
+            seller_nft_contract_id.clone(),
             1,
             GAS_FOR_NFT_TRANSFER,
-        ))
+        ));
+
+        env::log_str(
+            &json!({
+                "type": "accept_trade",
+                "params": {
+                    "sender_id": seller_id,
+                    "buyer_id": buyer_id,
+                    "nft_contract_id": seller_nft_contract_id,
+                    "token_id": seller_token_id,
+                    "buyer_nft_contract_id": buyer_nft_contract_id,
+                    "buyer_token_id": buyer_token_id,
+                }
+            })
+            .to_string(),
+        );
     }
 
     // Auction bids
@@ -1687,6 +1814,16 @@ impl Contract {
         token_ids.insert(&contract_and_token_id);
 
         self.by_owner_id.insert(&owner_id, &token_ids);
+
+        // update offer trade approval_id
+        let owner_contract_account_id_token_id =
+            make_triple(&nft_contract_id, &owner_id, &token_id);
+        let trade_data = self.trades.get(&owner_contract_account_id_token_id);
+        if let Some(mut trade_list) = trade_data {
+            trade_list.approval_id = approval_id;
+            self.trades
+                .insert(&owner_contract_account_id_token_id, &trade_list);
+        }
 
         env::log_str(
             &json!({
@@ -1985,6 +2122,23 @@ trait ExtSelf {
         seller_id: AccountId,
         offer_data: OfferData,
         token_id: TokenId,
+    ) -> Promise;
+
+    fn callback_first_trade(
+        &mut self,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
+        seller_approval_id: u64,
+    ) -> Promise;
+
+    fn callback_second_trade(
+        &mut self,
+        buyer_id: AccountId,
+        buyer_nft_contract_id: AccountId,
+        buyer_token_id: TokenId,
+        seller_id: AccountId,
+        seller_nft_contract_id: AccountId,
+        seller_token_id: TokenId,
     ) -> Promise;
 }
 
@@ -2446,11 +2600,17 @@ mod tests {
             1,
         );
 
-        let trade_data =
-            contract.get_trade(accounts(3), accounts(2), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
+        let trade_data = contract.get_trade(
+            accounts(3),
+            Some("1:1".to_string()),
+            None,
+            accounts(2),
+            accounts(1),
+            "1:2".to_string(),
+        );
 
-        assert_eq!(trade_data.buyer_id, accounts(2));
-        assert_eq!(trade_data.buyer_nft_contract_id, accounts(1));
+        assert_eq!(trade_data.token_id.unwrap().to_string(), "1:1");
+        assert_eq!(trade_data.nft_contract_id, accounts(3));
     }
 
     #[test]
@@ -2480,8 +2640,21 @@ mod tests {
             .attached_deposit(1)
             .build());
 
-        contract.delete_trade(accounts(3), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
-        contract.get_trade(accounts(3), accounts(1), Some("1:1".to_string()), None, accounts(1), "1:2".to_string());
+        contract.delete_trade(
+            accounts(3),
+            Some("1:1".to_string()),
+            None,
+            accounts(1),
+            "1:2".to_string(),
+        );
+        contract.get_trade(
+            accounts(3),
+            Some("1:1".to_string()),
+            None,
+            accounts(1),
+            accounts(1),
+            "1:2".to_string(),
+        );
     }
 
     #[test]
