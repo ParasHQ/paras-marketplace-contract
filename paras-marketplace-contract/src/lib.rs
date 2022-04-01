@@ -115,6 +115,9 @@ pub struct OfferDataJson {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TradeData {
+    pub buyer_amount: Option<Balance>,
+    pub seller_amount: Option<Balance>,
+    pub ft_token_id: Option<String>,
     pub nft_contract_id: AccountId,
     pub token_id: Option<TokenId>,
     pub token_series_id: Option<TokenSeriesId>,
