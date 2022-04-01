@@ -950,7 +950,7 @@ impl Contract {
                         for &value in payout.payout.values() {
                             remainder = remainder.checked_sub(value.0)?;
                         }
-                        if remainder == 0 || remainder == 1 {
+                        if remainder <= 100 {
                             Some(payout.payout)
                         } else {
                             None
@@ -962,7 +962,7 @@ impl Contract {
                     for &value in payout.values() {
                         remainder = remainder.checked_sub(value.0)?;
                     }
-                    if remainder == 0 || remainder == 1 {
+                    if remainder <= 100 {
                         Some(payout)
                     } else {
                         None
