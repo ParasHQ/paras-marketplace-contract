@@ -118,6 +118,7 @@ pub struct TradeData {
     pub buyer_amount: Option<Balance>,
     pub seller_amount: Option<Balance>,
     pub ft_token_id: Option<String>,
+    pub is_active: Option<bool>,
     pub nft_contract_id: AccountId,
     pub token_id: Option<TokenId>,
     pub token_series_id: Option<TokenSeriesId>,
@@ -1105,6 +1106,10 @@ impl Contract {
         );
 
         let trade_data = TradeData {
+            buyer_amount: None,
+            seller_amount: None,
+            is_active: None,
+            ft_token_id: None,
             nft_contract_id: nft_contract_id.into(),
             token_id: token_id,
             token_series_id: token_series_id,
