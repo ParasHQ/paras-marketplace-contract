@@ -24,7 +24,8 @@ pub fn create_nft_and_mint_one(
     nft: &UserAccount,
     owner: &UserAccount,
     creator: &UserAccount,
-    receiver_id: &UserAccount,
+    receiver_id_1: &UserAccount,
+    receiver_id_2: &UserAccount,
 ) {
     owner
         .call(
@@ -48,7 +49,6 @@ pub fn create_nft_and_mint_one(
                     "k".repeat(64): 1000u32,
                     "l".repeat(64): 1000u32,
                     "m".repeat(64): 500u32,
-                    "n".repeat(64): 500u32,
                 },
             })
             .to_string()
@@ -58,13 +58,28 @@ pub fn create_nft_and_mint_one(
         )
         .assert_success();
 
-    receiver_id
+    receiver_id_1
         .call(
             nft.account_id(),
             "nft_buy",
             &json!({
                 "token_series_id": "1",
-                "receiver_id": receiver_id.account_id(),
+                "receiver_id": receiver_id_1.account_id(),
+            })
+            .to_string()
+            .into_bytes(),
+            DEFAULT_GAS,
+            to_yocto("1") + STORAGE_MINT_ESTIMATE,
+        )
+        .assert_success();
+
+    receiver_id_2
+        .call(
+            nft.account_id(),
+            "nft_buy",
+            &json!({
+                "token_series_id": "1",
+                "receiver_id": receiver_id_2.account_id(),
             })
             .to_string()
             .into_bytes(),
@@ -73,8 +88,10 @@ pub fn create_nft_and_mint_one(
         )
         .assert_success();
 }
+
 pub fn init() -> (
     ContractAccount<MarketplaceContract>,
+    UserAccount,
     UserAccount,
     UserAccount,
     UserAccount,
@@ -103,13 +120,14 @@ pub fn init() -> (
 
     root.create_user(account_from(&"m"), to_yocto("100"));
 
-    root.create_user(account_from(&"n"), to_yocto("100"));
-
     let alice = root.create_user(account_from(&"x"), to_yocto("100"));
 
     let bob = root.create_user(account_from(&"y"), to_yocto("100"));
 
     let chandra = root.create_user(account_from(&"z"), to_yocto("100"));
+
+    let darmaji = root.create_user(account_from(&"n"), to_yocto("100"));
+
     let nft_account_id = AccountId::new_unchecked(NFT_ID_STR.to_string());
     let nft_contract = root.deploy(&NFT_WASM_BYTES, nft_account_id.clone(), STORAGE_AMOUNT);
 
@@ -148,6 +166,7 @@ pub fn init() -> (
         alice,
         bob,
         chandra,
+        darmaji,
         root,
     )
 }
