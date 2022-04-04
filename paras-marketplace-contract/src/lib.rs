@@ -1028,6 +1028,12 @@ impl Contract {
             let current_bid = &bids[bids.len() - 1];
 
             assert!(
+              amount.0 > current_bid.price.0 + (current_bid.price.0 / 100 * 5),
+              "Paras: Can't pay less than or equal to current bid price + 5% : {:?}",
+              current_bid.price.0 + (current_bid.price.0 / 100 * 5)
+            );
+
+            assert!(
                 amount.0 > current_bid.price.0,
                 "Paras: Can't pay less than or equal to current bid price: {:?}",
                 current_bid.price

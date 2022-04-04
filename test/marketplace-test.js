@@ -11,6 +11,7 @@ const {
   ownerAccountName,
   tokenOwnerAccount,
   bidderAccount,
+  bidderAccount2,
   explorerUrl
 } = testUtils;
 
@@ -114,9 +115,9 @@ describe("Paras Marketplace Contract", function () {
           nft_contract_id: nftContractName,
           ft_token_id: "near",
           token_id: "507:1",
-          amount: "11500000000000000000000000",
+          amount: "10500000000000000000000000",
         },
-        attachedDeposit: "11500000000000000000000000",
+        attachedDeposit: "10500000000000000000000000",
       });
 
       const market_data_after_bid = await marketplaceContractAccount.viewFunction(
@@ -128,6 +129,52 @@ describe("Paras Marketplace Contract", function () {
         },
       );
       console.log("Market Data after bid : \n" , market_data_after_bid)
+
+      // Add Bid 2
+      const bid2 = await bidderAccount2.functionCall({
+        contractId: marketplaceContractName,
+        methodName: "add_bid",
+        args: {
+          nft_contract_id: nftContractName,
+          ft_token_id: "near",
+          token_id: "507:1",
+          amount: "11500000000000000000000000",
+        },
+        attachedDeposit: "11500000000000000000000000",
+      });
+
+      const market_data_after_bid2 = await marketplaceContractAccount.viewFunction(
+        marketplaceContractName,
+        "get_market_data",
+        {
+          nft_contract_id: nftContractName,
+          token_id: "507:1",
+        },
+      );
+      console.log("Market Data after bid 2 : \n" , market_data_after_bid2)
+
+      // Add Bid 3
+      const bid3 = await bidderAccount.functionCall({
+        contractId: marketplaceContractName,
+        methodName: "add_bid",
+        args: {
+          nft_contract_id: nftContractName,
+          ft_token_id: "near",
+          token_id: "507:1",
+          amount: "12500000000000000000000000",
+        },
+        attachedDeposit: "12500000000000000000000000",
+      });
+
+      const market_data_after_bid3 = await marketplaceContractAccount.viewFunction(
+        marketplaceContractName,
+        "get_market_data",
+        {
+          nft_contract_id: nftContractName,
+          token_id: "507:1",
+        },
+      );
+      console.log("Market Data after bid 3 : \n" , market_data_after_bid3)
 
       // Accept Bid
       await tokenOwnerAccount.functionCall({

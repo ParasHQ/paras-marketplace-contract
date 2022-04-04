@@ -1,8 +1,5 @@
 const nearAPI = require("near-api-js");
 const {
-  KeyPair,
-  Account,
-  Contract,
   utils: {
     format: { parseNearAmount },
   },
@@ -40,10 +37,16 @@ const marketplaceContractAccount = new nearAPI.Account(
   marketplaceContractName
 );
 const ownerAccount = new nearAPI.Account(near.connection, ownerAccountName);
+
+// Use your own account that logged in on NEAR CLI
 const tokenOwnerAccount = new nearAPI.Account(near.connection, "castleoverlord.testnet");
 const bidderAccount = new nearAPI.Account(
   near.connection,
   "bobol.testnet"
+);
+const bidderAccount2 = new nearAPI.Account(
+  near.connection,
+  "nearmonster.testnet"
 );
 
 marketplaceContractAccount.addAccessKey = (publicKey) =>
@@ -136,5 +139,6 @@ module.exports = {
   contractMethods,
   tokenOwnerAccount,
   bidderAccount,
+  bidderAccount2,
   explorerUrl
 };
