@@ -1882,7 +1882,8 @@ impl Contract {
                     "started_at": started_at,
                     "ended_at": ended_at,
                     "end_price": end_price,
-                    "is_auction": is_auction
+                    "is_auction": is_auction,
+                    "transaction_fee": current_transaction_fee.to_string(),
                 }
             })
             .to_string(),
