@@ -313,7 +313,7 @@ impl Contract {
         }
     }
 
-    pub fn get_market_data_transaction_fee(&mut self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
+    pub fn calculate_market_data_transaction_fee(&mut self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         if let Some(transaction_fee) = self.market_data_transaction_fee.transaction_fee.get(&contract_and_token_id){
             return transaction_fee;
@@ -337,6 +337,16 @@ impl Contract {
 
     pub fn get_transaction_fee(&self) -> &TransactionFee {
         &self.transaction_fee
+    }
+
+    pub fn get_market_data_transaction_fee (self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
+        let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+        if let Some(transaction_fee) = self.market_data_transaction_fee.transaction_fee.get(&contract_and_token_id){
+            return transaction_fee;
+        }
+
+        // fallback to default transaction fee
+        self.transaction_fee.current_fee as u128
     }
 
     #[payable]
@@ -568,7 +578,7 @@ impl Contract {
         // Payout (transfer to royalties and seller)
         if market_data.ft_token_id == near_account() {
             // 5% fee for treasury
-            let treasury_fee = price.0 * self.get_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
+            let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
@@ -1027,7 +1037,7 @@ impl Contract {
         if offer_data.ft_token_id == near_account() {
             // 5% fee for treasury
             let treasury_fee =
-                offer_data.price as u128 * self.get_market_data_transaction_fee(&offer_data.nft_contract_id, &token_id) / 10_000u128;
+                offer_data.price as u128 * self.calculate_market_data_transaction_fee(&offer_data.nft_contract_id, &token_id) / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
@@ -2033,7 +2043,7 @@ impl Contract {
 
     // View
 
-    pub fn get_market_data(mut self, nft_contract_id: AccountId, token_id: TokenId) -> MarketDataJson {
+    pub fn get_market_data(self, nft_contract_id: AccountId, token_id: TokenId) -> MarketDataJson {
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         let market_data: Option<MarketData> =
             if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
