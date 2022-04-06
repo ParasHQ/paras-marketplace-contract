@@ -1005,6 +1005,8 @@ impl Contract {
             );
         }
 
+        assert_ne!(market_data.owner_id, bidder_id, "Paras: Owner cannot bid their own token");
+
         assert!(
             env::attached_deposit() >= amount.into(),
             "Paras: attached deposit is less than amount"
