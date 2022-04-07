@@ -2801,14 +2801,14 @@ mod tests {
 
         testing_env!(context
             .predecessor_account_id(accounts(4))
-            .attached_deposit(10u128.pow(24) + 2)
+            .attached_deposit(10u128.pow(24) * 2)
             .build());
 
         contract.add_bid(
             accounts(2),
             near_account(),
             "1:1".to_string(),
-            U128::from(10u128.pow(24) + 2),
+            U128::from(10u128.pow(24) * 2),
         );
 
         testing_env!(context
