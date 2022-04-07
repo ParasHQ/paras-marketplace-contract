@@ -90,6 +90,12 @@ pub struct MarketData {
     pub is_auction: Option<bool>,
 }
 
+#[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+pub struct MarketDataTransactionFee {
+    pub transaction_fee: UnorderedMap<ContractAndTokenId, u128>
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct OfferData {
@@ -138,6 +144,7 @@ pub struct MarketDataJson {
     ended_at: Option<U64>,
     end_price: Option<U128>, // dutch auction
     is_auction: Option<bool>,
+    transaction_fee: U128
 }
 
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -153,6 +160,7 @@ pub struct ContractV2 {
     pub offers: UnorderedMap<ContractAccountIdTokenId, OfferData>,
     pub paras_nft_contracts: UnorderedSet<AccountId>,
     pub transaction_fee: TransactionFee,
+    pub trades: UnorderedMap<ContractAccountIdTokenId, TradeList>,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -176,6 +184,7 @@ pub struct Contract {
     pub paras_nft_contracts: UnorderedSet<AccountId>,
     pub transaction_fee: TransactionFee,
     pub trades: UnorderedMap<ContractAccountIdTokenId, TradeList>,
+    pub market_data_transaction_fee: MarketDataTransactionFee
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -195,6 +204,7 @@ pub enum StorageKey {
     OffersV2,
     ParasNFTContractIdsV2,
     Trade,
+    MarketDataTransactionFee
 }
 
 #[near_bindgen]
@@ -225,6 +235,9 @@ impl Contract {
                 current_fee,
             },
             trades: UnorderedMap::new(StorageKey::Trade),
+            market_data_transaction_fee: MarketDataTransactionFee{
+                transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee)
+            } 
         };
 
         this.approved_ft_token_ids.insert(&near_account());
@@ -261,6 +274,9 @@ impl Contract {
             paras_nft_contracts: prev.paras_nft_contracts,
             transaction_fee: prev.transaction_fee,
             trades: UnorderedMap::new(StorageKey::Trade),
+            market_data_transaction_fee: MarketDataTransactionFee{
+                transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee)
+            } 
         };
 
         this
@@ -297,6 +313,16 @@ impl Contract {
         }
     }
 
+    pub fn calculate_market_data_transaction_fee(&mut self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
+        let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+        if let Some(transaction_fee) = self.market_data_transaction_fee.transaction_fee.get(&contract_and_token_id){
+            return transaction_fee;
+        }
+
+        // fallback to default transaction fee
+        self.calculate_current_transaction_fee()
+    }
+
     pub fn calculate_current_transaction_fee(&mut self) -> u128 {
         let transaction_fee: &TransactionFee = &self.transaction_fee;
         if transaction_fee.next_fee.is_some() {
@@ -311,6 +337,16 @@ impl Contract {
 
     pub fn get_transaction_fee(&self) -> &TransactionFee {
         &self.transaction_fee
+    }
+
+    pub fn get_market_data_transaction_fee (self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
+        let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+        if let Some(transaction_fee) = self.market_data_transaction_fee.transaction_fee.get(&contract_and_token_id){
+            return transaction_fee;
+        }
+
+        // fallback to default transaction fee
+        self.transaction_fee.current_fee as u128
     }
 
     #[payable]
@@ -542,7 +578,7 @@ impl Contract {
         // Payout (transfer to royalties and seller)
         if market_data.ft_token_id == near_account() {
             // 5% fee for treasury
-            let treasury_fee = price.0 * self.calculate_current_transaction_fee() / 10_000u128;
+            let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
@@ -1001,7 +1037,7 @@ impl Contract {
         if offer_data.ft_token_id == near_account() {
             // 5% fee for treasury
             let treasury_fee =
-                offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
+                offer_data.price as u128 * self.calculate_market_data_transaction_fee(&offer_data.nft_contract_id, &token_id) / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
@@ -1836,6 +1872,11 @@ impl Contract {
                 .insert(&owner_contract_account_id_token_id, &trade_list);
         }
 
+
+        // set market data transaction fee
+        let current_transaction_fee = self.calculate_current_transaction_fee();
+        self.market_data_transaction_fee.transaction_fee.insert(&contract_and_token_id, &current_transaction_fee);
+
         env::log_str(
             &json!({
                 "type": "add_market_data",
@@ -1849,7 +1890,8 @@ impl Contract {
                     "started_at": started_at,
                     "ended_at": ended_at,
                     "end_price": end_price,
-                    "is_auction": is_auction
+                    "is_auction": is_auction,
+                    "transaction_fee": current_transaction_fee.to_string(),
                 }
             })
             .to_string(),
@@ -1893,6 +1935,9 @@ impl Contract {
             } else {
                 None
             };
+
+        // set market data transaction fee
+        self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
 
         market_data.map(|market_data| {
             let by_owner_id = self
@@ -2053,6 +2098,8 @@ impl Contract {
             }
         }
 
+        let current_transaction_fee = self.get_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id);
+
         MarketDataJson {
             owner_id: market_data.owner_id,
             approval_id: market_data.approval_id.into(),
@@ -2065,6 +2112,7 @@ impl Contract {
             ended_at: market_data.ended_at.map(|x| x.into()),
             end_price: market_data.end_price.map(|x| x.into()),
             is_auction: market_data.is_auction,
+            transaction_fee: current_transaction_fee.into()
         }
     }
 
@@ -2820,4 +2868,58 @@ mod tests {
         assert_eq!(contract.get_transaction_fee().next_fee, None);
         assert_eq!(contract.get_transaction_fee().start_time, None);
     }
+    
+    #[test]
+    fn test_transaction_fee_locked(){
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .predecessor_account_id(accounts(0))
+            .attached_deposit(1)
+            .build());
+
+        assert_eq!(contract.get_transaction_fee().current_fee, 500);
+        assert_eq!(contract.get_transaction_fee().next_fee, None);
+        assert_eq!(contract.get_transaction_fee().start_time, None);
+
+        let next_fee: u16 = 100;
+        let start_time: Timestamp = 1618109122863866400;
+        let start_time_sec: TimestampSec = to_sec(start_time);
+        contract.set_transaction_fee(next_fee, Some(start_time_sec));
+
+        contract.internal_add_market_data(
+            accounts(3),
+            1,
+            accounts(2),
+            "1:1".to_string(),
+            near_account(),
+            U128::from(1 * 10u128.pow(24)),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(contract.get_transaction_fee().current_fee, 500);
+        assert_eq!(contract.get_transaction_fee().next_fee, Some(next_fee));
+        assert_eq!(
+            contract.get_transaction_fee().start_time,
+            Some(start_time_sec)
+        );
+
+        testing_env!(context
+            .predecessor_account_id(accounts(1))
+            .block_timestamp(start_time + 1)
+            .build());
+
+        contract.calculate_current_transaction_fee();
+        assert_eq!(contract.get_transaction_fee().current_fee, next_fee);
+        assert_eq!(contract.get_transaction_fee().next_fee, None);
+        assert_eq!(contract.get_transaction_fee().start_time, None);
+
+        let market = contract.get_market_data(accounts(2), "1:1".to_string());
+        let market_data_transaction_fee: u128 = market.transaction_fee.into();
+        assert_eq!(market_data_transaction_fee, 500);
+    }
+
 }
