@@ -579,6 +579,8 @@ impl Contract {
         if market_data.ft_token_id == near_account() {
             // 5% fee for treasury
             let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
+            let contract_and_token_id = format!("{}{}{}", &market_data.nft_contract_id, DELIMETER, &market_data.token_id);
+            self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
@@ -1037,7 +1039,7 @@ impl Contract {
         if offer_data.ft_token_id == near_account() {
             // 5% fee for treasury
             let treasury_fee =
-                offer_data.price as u128 * self.calculate_market_data_transaction_fee(&offer_data.nft_contract_id, &token_id) / 10_000u128;
+                offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
 
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
@@ -1904,6 +1906,7 @@ impl Contract {
         token_id: &TokenId,
     ) -> Option<MarketData> {
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
+
         let market_data: Option<MarketData> =
             if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
                 self.old_market.remove(&contract_and_token_id);
@@ -1935,9 +1938,6 @@ impl Contract {
             } else {
                 None
             };
-
-        // set market data transaction fee
-        self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
 
         market_data.map(|market_data| {
             let by_owner_id = self
