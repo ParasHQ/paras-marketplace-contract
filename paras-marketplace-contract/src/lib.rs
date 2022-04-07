@@ -273,7 +273,7 @@ impl Contract {
             offers: prev.offers,
             paras_nft_contracts: prev.paras_nft_contracts,
             transaction_fee: prev.transaction_fee,
-            trades: UnorderedMap::new(StorageKey::Trade),
+            trades: prev.trades,
             market_data_transaction_fee: MarketDataTransactionFee{
                 transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee)
             } 
