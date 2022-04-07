@@ -5,6 +5,12 @@
   "scripts": {
     "build:contract": "./build.sh",
     "dev:deploy": "yarn build:contract && rm -rf neardev && (near dev-deploy || exit 0)",
-    "test": "cargo test --all -- --nocapture --color always"
+    "test": "cargo test --all -- --nocapture --color always",
+    "test:mocha": "mocha"
+  },
+  "dependencies": {
+    "assert": "^2.0.0",
+    "mocha": "^9.2.2",
+    "near-api-js": "^0.44.2"
   }
 }

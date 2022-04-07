@@ -1572,6 +1572,8 @@ impl Contract {
             );
         }
 
+        assert_ne!(market_data.owner_id, bidder_id, "Paras: Owner cannot bid their own token");
+
         assert!(
             env::attached_deposit() >= amount.into(),
             "Paras: attached deposit is less than amount"
@@ -1593,6 +1595,12 @@ impl Contract {
 
         if !bids.is_empty() {
             let current_bid = &bids[bids.len() - 1];
+
+            assert!(
+              amount.0 > current_bid.price.0 + (current_bid.price.0 / 100 * 5),
+              "Paras: Can't pay less than or equal to current bid price + 5% : {:?}",
+              current_bid.price.0 + (current_bid.price.0 / 100 * 5)
+            );
 
             assert!(
                 amount.0 > current_bid.price.0,
