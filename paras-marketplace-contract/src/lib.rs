@@ -1635,7 +1635,7 @@ impl Contract {
             let current_bid = &bids[bids.len() - 1];
 
             assert!(
-              amount.0 > current_bid.price.0 + (current_bid.price.0 / 100 * 5),
+              amount.0 >= current_bid.price.0 + (current_bid.price.0 / 100 * 5),
               "Paras: Can't pay less than or equal to current bid price + 5% : {:?}",
               current_bid.price.0 + (current_bid.price.0 / 100 * 5)
             );
@@ -1693,10 +1693,10 @@ impl Contract {
             .get(&contract_and_token_id)
             .expect("Paras: Token id does not exist");
 
-        assert_eq!(
-            market_data.owner_id,
-            env::predecessor_account_id(),
-            "Paras: Only seller can call accept_bid"
+        assert!(
+          [market_data.owner_id.clone(), self.owner_id.clone()]
+            .contains(&env::predecessor_account_id()),
+            "Paras: Seller or owner only"
         );
 
         assert!(
@@ -1705,16 +1705,20 @@ impl Contract {
         );
 
         let mut bids = market_data.bids.unwrap();
-        let selected_bid = bids.remove(bids.len() - 1);
-        market_data.bids = Some(bids);
-        self.market.insert(&contract_and_token_id, &market_data);
+        if !bids.is_empty() {
+          let selected_bid = bids.remove(bids.len() - 1);
+          market_data.bids = Some(bids);
+          self.market.insert(&contract_and_token_id, &market_data);
 
-        self.internal_process_purchase(
-            market_data.nft_contract_id,
-            token_id,
-            selected_bid.bidder_id.clone(),
-            selected_bid.price.clone().0,
-        );
+          self.internal_process_purchase(
+              market_data.nft_contract_id,
+              token_id,
+              selected_bid.bidder_id.clone(),
+              selected_bid.price.clone().0,
+          );
+        } else {
+          self.internal_delete_market_data(&market_data.nft_contract_id, &market_data.token_id);
+        }
     }
 
     // Market Data functions
