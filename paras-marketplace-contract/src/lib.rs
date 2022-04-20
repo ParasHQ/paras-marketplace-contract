@@ -557,9 +557,8 @@ impl Contract {
                 if market_data.ft_token_id == near_account() {
                     Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
                 }
-            }
-            env::log_str(
-                &json!({
+                env::log_str(
+                    &json!({
                     "type": "resolve_purchase_fail",
                     "params": {
                         "owner_id": market_data.owner_id,
@@ -570,8 +569,35 @@ impl Contract {
                         "buyer_id": buyer_id,
                     }
                 })
-                .to_string(),
-            );
+                        .to_string(),
+                );
+            }
+
+            // if transferred but payout wrong, transfer the funds to the owner only
+            if market_data.ft_token_id == near_account() {
+                let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
+                let contract_and_token_id = format!("{}{}{}", &market_data.nft_contract_id, DELIMETER, &market_data.token_id);
+                self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
+                Promise::new(market_data.owner_id.clone()).transfer(price.0 - treasury_fee);
+                if treasury_fee > 0 {
+                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                }
+
+                env::log_str(
+                    &json!({
+                    "type": "resolve_purchase",
+                    "params": {
+                        "owner_id": &market_data.owner_id,
+                        "nft_contract_id": &market_data.nft_contract_id,
+                        "token_id": &market_data.token_id,
+                        "ft_token_id": market_data.ft_token_id,
+                        "price": price,
+                        "buyer_id": buyer_id,
+                    }
+                })
+                        .to_string(),
+                );
+            }
             return price;
         };
 
