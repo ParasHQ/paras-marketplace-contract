@@ -1040,10 +1040,8 @@ impl Contract {
         } else {
             if offer_data.ft_token_id == near_account() {
                 Promise::new(offer_data.buyer_id.clone()).transfer(u128::from(offer_data.price));
-            }
-            // leave function and return all FTs in ft_resolve_transfer
-            env::log_str(
-                &json!({
+                env::log_str(
+                    &json!({
                     "type": "resolve_purchase_fail",
                     "params": {
                         "owner_id": seller_id,
@@ -1055,9 +1053,36 @@ impl Contract {
                         "buyer_id": offer_data.buyer_id,
                         "is_offer": true,
                     }
+                }).to_string(),
+                );
+            }
+
+            // if transferred but payout wrong, transfer the funds to the owner only
+            if offer_data.ft_token_id == near_account() {
+                let treasury_fee =
+                    offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
+                Promise::new(seller_id.clone()).transfer(offer_data.price - treasury_fee);
+                if treasury_fee > 0 {
+                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                }
+
+                env::log_str(
+                    &json!({
+                    "type": "resolve_purchase",
+                    "params": {
+                        "owner_id": seller_id,
+                        "nft_contract_id": &offer_data.nft_contract_id,
+                        "token_id": &token_id,
+                        "token_series_id": offer_data.token_series_id,
+                        "ft_token_id": offer_data.ft_token_id,
+                        "price": offer_data.price.to_string(),
+                        "buyer_id": offer_data.buyer_id,
+                        "is_offer": true,
+                    }
                 })
-                .to_string(),
-            );
+                        .to_string(),
+                );
+            }
             return offer_data.price.into();
         };
 
