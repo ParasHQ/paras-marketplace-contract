@@ -571,10 +571,7 @@ impl Contract {
                 })
                         .to_string(),
                 );
-            }
-
-            // if transferred but payout wrong, transfer the funds to the owner only
-            if market_data.ft_token_id == near_account() {
+            } else if market_data.ft_token_id == near_account() {
                 let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
                 let contract_and_token_id = format!("{}{}{}", &market_data.nft_contract_id, DELIMETER, &market_data.token_id);
                 self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
@@ -1038,10 +1035,11 @@ impl Contract {
         let payout = if let Some(payout_option) = payout_option {
             payout_option
         } else {
-            if offer_data.ft_token_id == near_account() {
-                Promise::new(offer_data.buyer_id.clone()).transfer(u128::from(offer_data.price));
-                env::log_str(
-                    &json!({
+            if !is_promise_success() {
+                if offer_data.ft_token_id == near_account() {
+                    Promise::new(offer_data.buyer_id.clone()).transfer(u128::from(offer_data.price));
+                    env::log_str(
+                        &json!({
                     "type": "resolve_purchase_fail",
                     "params": {
                         "owner_id": seller_id,
@@ -1054,11 +1052,9 @@ impl Contract {
                         "is_offer": true,
                     }
                 }).to_string(),
-                );
-            }
-
-            // if transferred but payout wrong, transfer the funds to the owner only
-            if offer_data.ft_token_id == near_account() {
+                    );
+                }
+            } else if offer_data.ft_token_id == near_account() {
                 let treasury_fee =
                     offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
                 Promise::new(seller_id.clone()).transfer(offer_data.price - treasury_fee);
