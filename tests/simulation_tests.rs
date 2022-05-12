@@ -41,7 +41,7 @@ mod utils;
 
 #[test]
 fn test_new() {
-    let (marketplace, _, treasury, _, _, _, _) = init();
+    let (marketplace, _, treasury, _, _, _, _, _) = init();
 
     let treasury_id: AccountId = view!(marketplace.get_treasury()).unwrap_json();
     assert_eq!(treasury_id, treasury.account_id());
@@ -49,7 +49,7 @@ fn test_new() {
 
 #[test]
 fn test_add_market_data() {
-    let (marketplace, nft, _, alice, bob, chandra, _) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
     //owner marketplace and nft-> alice
     //seller -> bob
@@ -57,7 +57,7 @@ fn test_add_market_data() {
     //treasury -> treasury
     //royalty to 10 different account
 
-    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
     let msg =
         &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
             .to_string();
@@ -105,9 +105,9 @@ fn test_add_market_data() {
 
 #[test]
 fn test_buy() {
-    let (marketplace, nft, _, alice, bob, chandra, root) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
 
-    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
     let msg =
         &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
             .to_string();
@@ -159,11 +159,11 @@ fn test_buy() {
     let restored_storage_price_for_buy =
         initial_storage_usage - marketplace.account().unwrap().storage_usage;
 
-        println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
-        println!(
-            "[BUY] Gas burnt: {} TeraGas",
-            outcome.gas_burnt().0 as f64 / 1e12
-        );
+    println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+    println!(
+        "[BUY] Gas burnt: {} TeraGas",
+        outcome.gas_burnt().0 as f64 / 1e12
+    );
     outcome.assert_success();
     println!(
         "[BUY] Restored storage price : {} Bytes",
@@ -175,7 +175,7 @@ fn test_buy() {
 
 #[test]
 fn test_add_offer() {
-    let (marketplace, nft, _, alice, bob, chandra, _) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
     //owner marketplace and nft-> alice
     //seller -> bob
@@ -183,7 +183,7 @@ fn test_add_offer() {
     //treasury -> treasury
     //royalty to 10 different account
 
-    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
 
     bob.call(
         marketplace.account_id(),
@@ -226,7 +226,7 @@ fn test_add_offer() {
 
 #[test]
 fn test_accept_offer() {
-    let (marketplace, nft, _, alice, bob, chandra, _) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
     //owner marketplace and nft-> alice
     //seller -> bob
@@ -234,7 +234,7 @@ fn test_accept_offer() {
     //treasury -> treasury
     //royalty to 10 different account
 
-    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
 
     bob.call(
         marketplace.account_id(),
@@ -299,7 +299,7 @@ fn test_accept_offer() {
 
 #[test]
 fn test_accept_offer_paras_series() {
-    let (marketplace, nft, _, alice, bob, chandra, _) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
     //owner marketplace and nft-> alice
     //seller -> bob
@@ -307,7 +307,7 @@ fn test_accept_offer_paras_series() {
     //treasury -> treasury
     //royalty to 10 different account
 
-    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
 
     bob.call(
         marketplace.account_id(),
@@ -369,9 +369,280 @@ fn test_accept_offer_paras_series() {
     assert_eq!(token.owner_id, bob.account_id());
 }
 
+// //trade
+
+#[test]
+fn test_add_trade() {
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    //chadra's token_id = 1:1
+    //darmaji's token_id = 1:2
+
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    let initial_storage_usage = marketplace.account().unwrap().storage_usage;
+
+    let outcome = chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:2",
+            }}.to_string()
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    );
+
+    outcome.assert_success();
+    let storage_price = (marketplace.account().unwrap().storage_usage - initial_storage_usage)
+        as u128
+        * 10u128.pow(19);
+
+    println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+    println!(
+        "[ADD_TRADE] Gas burnt: {} TeraGas",
+        outcome.gas_burnt().0 as f64 / 1e12
+    );
+    println!("[ADD_TRADE] Storage price : {} N", storage_price);
+}
+
+#[test]
+fn test_accept_trade(){
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    //init
+    //chadra's token_id = 1:1
+    //darmaji's token_id = 1:2
+
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA * 2,
+    )
+    .assert_success();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:2",
+            }}.to_string()
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    darmaji.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    darmaji.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:2",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "accept_trade",
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
+            }}.to_string()
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:2",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:1",
+            }}.to_string()
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    darmaji.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    //after chandra trade his nft the result should be
+    //chadra's token_id = 1:2
+    //darmaji's token_id = 1:1
+   
+    let chandra_token: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+
+    let darmaji_token: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:2"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+   
+    assert_eq!(chandra_token.owner_id, darmaji.account_id());
+    assert_eq!(darmaji_token.owner_id, chandra.account_id());
+}
+
+#[test]
+fn test_accept_trade_paras_series(){
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    //init
+    //chadra's token_id = 1:1
+    //darmaji's token_id = 1:2
+
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_series_id": "1"
+            }}.to_string()
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    darmaji.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    darmaji.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:2",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "accept_trade_paras_series",
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
+            }}.to_string()
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    //after chandra trade his nft the result should be
+    //chadra's token_id = 1:2
+    //darmaji's token_id = 1:1
+   
+    let chandra_token: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+
+    let darmaji_token: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:2"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+   
+    assert_eq!(chandra_token.owner_id, darmaji.account_id());
+    assert_eq!(darmaji_token.owner_id, chandra.account_id());
+}
+
 #[test]
 fn test_add_market_data_auction_timed() {
-    let (marketplace, nft, _, alice, bob, chandra, _) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
     //owner marketplace and nft-> alice
     //seller -> bob
@@ -382,7 +653,7 @@ fn test_add_market_data_auction_timed() {
     const OCTOBER_1_2021: u64 = 1633046400000000000;
     const ONE_DAY: u64 = 86400000000000;
 
-    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
     let msg = &json!({
         "market_type":"sale",
         "price": to_yocto("3").to_string(),
@@ -496,7 +767,7 @@ fn test_add_market_data_auction_timed() {
 
 #[test]
 fn test_add_market_data_dutch_auction() {
-    let (marketplace, nft, _, alice, bob, chandra, root) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
 
     //owner marketplace and nft-> alice
     //seller -> bob
@@ -507,7 +778,7 @@ fn test_add_market_data_dutch_auction() {
     const OCTOBER_1_2021: u64 = 1633046400000000000;
     const ONE_DAY: u64 = 86400000000000;
 
-    create_nft_and_mint_one(&nft, &alice, &bob, &chandra);
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
     let msg = &json!({
         "market_type":"sale",
         "price": to_yocto("3").to_string(),
