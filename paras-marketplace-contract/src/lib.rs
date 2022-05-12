@@ -8,6 +8,7 @@ use near_sdk::{
 };
 use near_sdk::{is_promise_success, promise_result_as_success};
 use std::collections::HashMap;
+use near_sdk::env::is_valid_account_id;
 
 use crate::external::*;
 
@@ -1879,7 +1880,7 @@ impl Contract {
         token_id: TokenId,
         ft_token_id: AccountId,
         price: U128,
-        started_at: Option<U64>,
+        mut started_at: Option<U64>,
         ended_at: Option<U64>,
         end_price: Option<U128>,
         is_auction: Option<bool>,
@@ -1904,6 +1905,14 @@ impl Contract {
 
             if ended_at.is_some() {
                 assert!(started_at.unwrap().0 < ended_at.unwrap().0);
+            }
+        }
+
+        if let Some(is_auction) = is_auction {
+            if is_auction == true {
+                if started_at.is_none() {
+                    started_at = Some(U64(current_time));
+                }
             }
         }
 
