@@ -1641,22 +1641,20 @@ impl Contract {
             );
 
             assert!(
-                amount.0 > current_bid.price.0,
-                "Paras: Can't pay less than or equal to current bid price: {:?}",
-                current_bid.price
-            );
-
-            assert!(
                 amount.0 > market_data.price,
                 "Paras: Can't pay less than or equal to starting price: {:?}",
                 U128(market_data.price)
             );
 
-            // refund
-            Promise::new(current_bid.bidder_id.clone()).transfer(current_bid.price.0);
+            // Retain all elements except account_id
+            bids.retain(|bid| {
+              if bid.bidder_id == bidder_id {
+                // refund
+                Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+              }
 
-            // always keep 1 bid for now
-            bids.remove(bids.len() - 1);
+              bid.bidder_id != bidder_id
+            });
         } else {
             assert!(
                 amount.0 > market_data.price,
@@ -1685,6 +1683,52 @@ impl Contract {
     }
 
     #[payable]
+    pub fn cancel_bid(&mut self, nft_contract_id: AccountId, token_id: TokenId, account_id: AccountId) {
+      assert_one_yocto();
+      let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
+      let mut market_data = self
+        .market
+        .get(&contract_and_token_id)
+        .expect("Paras: Token id does not exist");
+
+      let mut bids = market_data.bids.unwrap();
+
+      assert!(
+        !bids.is_empty(),
+        "Paras: Bids data does not exist"
+      );
+      
+      // Retain all elements except account_id
+      bids.retain(|bid| {
+        if bid.bidder_id == account_id {
+          assert!(
+          [bid.bidder_id.clone(), self.owner_id.clone()]
+            .contains(&env::predecessor_account_id()),
+            "Paras: Bidder or owner only"
+          );
+
+          // refund
+          Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+        }
+
+        bid.bidder_id != account_id
+      });
+
+      market_data.bids = Some(bids);
+      self.market.insert(&contract_and_token_id, &market_data);
+
+      env::log_str(
+        &json!({
+          "type": "cancel_bid",
+          "params": {
+            "bidder_id": account_id, "nft_contract_id": nft_contract_id, "token_id": token_id
+          }
+        })
+        .to_string(),
+      );
+    }
+
+    #[payable]
     pub fn accept_bid(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
         assert_one_yocto();
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
@@ -1705,20 +1749,27 @@ impl Contract {
         );
 
         let mut bids = market_data.bids.unwrap();
-        if !bids.is_empty() {
-          let selected_bid = bids.remove(bids.len() - 1);
-          market_data.bids = Some(bids);
-          self.market.insert(&contract_and_token_id, &market_data);
 
-          self.internal_process_purchase(
-              market_data.nft_contract_id,
-              token_id,
-              selected_bid.bidder_id.clone(),
-              selected_bid.price.clone().0,
-          );
-        } else {
-          self.internal_delete_market_data(&market_data.nft_contract_id, &market_data.token_id);
+        assert!(!bids.is_empty(), "Paras: Cannot accept bid with empty bid");
+
+        let selected_bid = bids.remove(bids.len() - 1);
+
+        // refund all except selected bids
+        for bid in &bids {
+          // refund
+          Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
         }
+        bids.clear();
+
+        market_data.bids = Some(bids);
+        self.market.insert(&contract_and_token_id, &market_data);
+
+        self.internal_process_purchase(
+            market_data.nft_contract_id,
+            token_id,
+            selected_bid.bidder_id.clone(),
+            selected_bid.price.clone().0,
+        );
     }
 
     // Market Data functions
@@ -2805,14 +2856,14 @@ mod tests {
 
         testing_env!(context
             .predecessor_account_id(accounts(4))
-            .attached_deposit(10u128.pow(24) * 2)
+            .attached_deposit(10u128.pow(24) + 10u128.pow(24) * 5 / 100 + 1)
             .build());
 
         contract.add_bid(
             accounts(2),
             near_account(),
             "1:1".to_string(),
-            U128::from(10u128.pow(24) * 2),
+            U128::from(10u128.pow(24) + 10u128.pow(24) * 5 / 100 + 1),
         );
 
         testing_env!(context
