@@ -56,7 +56,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         let nft_contract_id = env::predecessor_account_id();
         let signer_id = env::signer_account_id();
         assert_ne!(
-            nft_contract_id, signer_id,
+            env::current_account_id(), nft_contract_id,
             "Paras: nft_on_approve should only be called via cross-contract call"
         );
         assert_eq!(owner_id, signer_id, "Paras: owner_id should be signer_id");

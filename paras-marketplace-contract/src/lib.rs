@@ -557,9 +557,8 @@ impl Contract {
                 if market_data.ft_token_id == near_account() {
                     Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
                 }
-            }
-            env::log_str(
-                &json!({
+                env::log_str(
+                    &json!({
                     "type": "resolve_purchase_fail",
                     "params": {
                         "owner_id": market_data.owner_id,
@@ -570,8 +569,32 @@ impl Contract {
                         "buyer_id": buyer_id,
                     }
                 })
-                .to_string(),
-            );
+                        .to_string(),
+                );
+            } else if market_data.ft_token_id == near_account() {
+                let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
+                let contract_and_token_id = format!("{}{}{}", &market_data.nft_contract_id, DELIMETER, &market_data.token_id);
+                self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
+                Promise::new(market_data.owner_id.clone()).transfer(price.0 - treasury_fee);
+                if treasury_fee > 0 {
+                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                }
+
+                env::log_str(
+                    &json!({
+                    "type": "resolve_purchase",
+                    "params": {
+                        "owner_id": &market_data.owner_id,
+                        "nft_contract_id": &market_data.nft_contract_id,
+                        "token_id": &market_data.token_id,
+                        "ft_token_id": market_data.ft_token_id,
+                        "price": price,
+                        "buyer_id": buyer_id,
+                    }
+                })
+                        .to_string(),
+                );
+            }
             return price;
         };
 
@@ -1012,12 +1035,11 @@ impl Contract {
         let payout = if let Some(payout_option) = payout_option {
             payout_option
         } else {
-            if offer_data.ft_token_id == near_account() {
-                Promise::new(offer_data.buyer_id.clone()).transfer(u128::from(offer_data.price));
-            }
-            // leave function and return all FTs in ft_resolve_transfer
-            env::log_str(
-                &json!({
+            if !is_promise_success() {
+                if offer_data.ft_token_id == near_account() {
+                    Promise::new(offer_data.buyer_id.clone()).transfer(u128::from(offer_data.price));
+                    env::log_str(
+                        &json!({
                     "type": "resolve_purchase_fail",
                     "params": {
                         "owner_id": seller_id,
@@ -1029,9 +1051,34 @@ impl Contract {
                         "buyer_id": offer_data.buyer_id,
                         "is_offer": true,
                     }
+                }).to_string(),
+                    );
+                }
+            } else if offer_data.ft_token_id == near_account() {
+                let treasury_fee =
+                    offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
+                Promise::new(seller_id.clone()).transfer(offer_data.price - treasury_fee);
+                if treasury_fee > 0 {
+                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                }
+
+                env::log_str(
+                    &json!({
+                    "type": "resolve_purchase",
+                    "params": {
+                        "owner_id": seller_id,
+                        "nft_contract_id": &offer_data.nft_contract_id,
+                        "token_id": &token_id,
+                        "token_series_id": offer_data.token_series_id,
+                        "ft_token_id": offer_data.ft_token_id,
+                        "price": offer_data.price.to_string(),
+                        "buyer_id": offer_data.buyer_id,
+                        "is_offer": true,
+                    }
                 })
-                .to_string(),
-            );
+                        .to_string(),
+                );
+            }
             return offer_data.price.into();
         };
 

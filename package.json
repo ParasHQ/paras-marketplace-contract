@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "license": "MIT",
   "scripts": {
-    "build:contract": "./build.sh",
+    "build": "yarn build:contract",
+    "build:contract": "make release",
+    "build:local": "./build.sh",
     "dev:deploy": "yarn build:contract && rm -rf neardev && (near dev-deploy || exit 0)",
     "test": "cargo test --all -- --nocapture --color always",
     "test:mocha": "mocha"
