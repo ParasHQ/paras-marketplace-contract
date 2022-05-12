@@ -1036,12 +1036,6 @@ impl Contract {
             );
 
             assert!(
-                amount.0 > current_bid.price.0,
-                "Paras: Can't pay less than or equal to current bid price: {:?}",
-                current_bid.price
-            );
-
-            assert!(
                 amount.0 > market_data.price,
                 "Paras: Can't pay less than or equal to starting price: {:?}",
                 U128(market_data.price)
@@ -1171,24 +1165,6 @@ impl Contract {
             selected_bid.bidder_id.clone(),
             selected_bid.price.clone().0,
         );
-    }
-
-    #[payable]
-    pub fn cancel_auction(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
-      assert_one_yocto();
-      let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
-      let market_data = self
-            .market
-            .get(&contract_and_token_id)
-            .expect("Paras: Token id does not exist");
-
-      assert!(
-        [market_data.owner_id.clone(), self.owner_id.clone()]
-          .contains(&env::predecessor_account_id()),
-          "Paras: Seller or owner only"
-      );
-
-      self.delete_market_data(market_data.nft_contract_id, market_data.token_id);
     }
 
     // Market Data functions
