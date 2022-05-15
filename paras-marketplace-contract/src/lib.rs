@@ -1689,8 +1689,8 @@ impl Contract {
             );
 
             assert!(
-                amount.0 > market_data.price,
-                "Paras: Can't pay less than or equal to starting price: {:?}",
+                amount.0 >= market_data.price,
+                "Paras: Can't pay less than starting price: {:?}",
                 U128(market_data.price)
             );
 
