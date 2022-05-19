@@ -1705,15 +1705,21 @@ impl Contract {
             });
         } else {
             assert!(
-                amount.0 > market_data.price,
-                "Paras: Can't pay less than or equal to starting price: {}",
-                market_data.price
+                amount.0 >= market_data.price,
+                "Paras: Can't pay less than starting price: {:?}",
+                amount.0
             );
         }
 
         bids.push(new_bid);
         market_data.bids = Some(bids);
         self.market.insert(&contract_and_token_id, &market_data);
+
+        // Remove first element if bids.length > 50
+        let updated_bids = market_data.bids.unwrap_or(Vec::new());
+        if updated_bids.len() >= 50 {
+          self.internal_cancel_bid(nft_contract_id.clone(), token_id.clone(), updated_bids[0].bidder_id.clone())
+        }
 
         env::log_str(
             &json!({
@@ -1730,9 +1736,7 @@ impl Contract {
         );
     }
 
-    #[payable]
-    pub fn cancel_bid(&mut self, nft_contract_id: AccountId, token_id: TokenId, account_id: AccountId) {
-      assert_one_yocto();
+    fn internal_cancel_bid(&mut self, nft_contract_id: AccountId, token_id: TokenId, account_id: AccountId) {
       let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
       let mut market_data = self
         .market
@@ -1749,12 +1753,6 @@ impl Contract {
       // Retain all elements except account_id
       bids.retain(|bid| {
         if bid.bidder_id == account_id {
-          assert!(
-          [bid.bidder_id.clone(), self.owner_id.clone()]
-            .contains(&env::predecessor_account_id()),
-            "Paras: Bidder or owner only"
-          );
-
           // refund
           Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
         }
@@ -1774,6 +1772,35 @@ impl Contract {
         })
         .to_string(),
       );
+    }
+
+    #[payable]
+    pub fn cancel_bid(&mut self, nft_contract_id: AccountId, token_id: TokenId, account_id: AccountId) {
+      assert_one_yocto();
+      let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
+      let market_data = self
+        .market
+        .get(&contract_and_token_id)
+        .expect("Paras: Token id does not exist");
+
+      let bids = market_data.bids.unwrap();
+
+      assert!(
+        !bids.is_empty(),
+        "Paras: Bids data does not exist"
+      );
+
+      for x in 0..bids.len() {
+        if bids[x].bidder_id == account_id {
+          assert!(
+            [bids[x].bidder_id.clone(), self.owner_id.clone()]
+              .contains(&env::predecessor_account_id()),
+              "Paras: Bidder or owner only"
+          );
+        }
+      }
+
+      self.internal_cancel_bid(nft_contract_id, token_id, account_id,);
     }
 
     #[payable]
