@@ -1707,7 +1707,7 @@ impl Contract {
             assert!(
                 amount.0 >= market_data.price,
                 "Paras: Can't pay less than starting price: {:?}",
-                amount.0
+                market_data.price
             );
         }
 
