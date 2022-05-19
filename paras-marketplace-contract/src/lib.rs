@@ -1717,7 +1717,7 @@ impl Contract {
 
         // Remove first element if bids.length > 50
         let updated_bids = market_data.bids.unwrap_or(Vec::new());
-        if updated_bids.len() >= 50 {
+        if updated_bids.len() >= 100 {
           self.internal_cancel_bid(nft_contract_id.clone(), token_id.clone(), updated_bids[0].bidder_id.clone())
         }
 

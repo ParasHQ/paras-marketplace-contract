@@ -887,3 +887,72 @@ fn test_add_market_data_dutch_auction() {
 
     outcome.assert_success();
 }
+
+#[test]
+fn test_50_bid_and_cancel() {
+  let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
+
+  create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+  let msg = &json!({
+    "market_type": "sale",
+    "price": "10",
+    "ft_token_id": "near",
+    "ended_at": "1655966796000000000",
+    "is_auction": true,
+  }).to_string(); 
+
+  chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+  chandra.call(
+    nft.account_id(), 
+    "nft_approve", 
+    &json!({
+      "token_id": format!("{}:{}", "1", "1"),
+      "account_id": marketplace.account_id(),
+      "msg": msg
+    }).to_string().into_bytes(), 
+    DEFAULT_GAS, 
+    STORAGE_APPROVE);
+
+  let mut users = vec![];
+  let mut bid_amount = 10 * 10u128.pow(24);
+  for x in 0..150 {
+    let user_id: String = format!("user-{}", x.to_string());
+    users.push(root.create_user(AccountId::new_unchecked(user_id), to_yocto("100000")));
+    bid_amount = bid_amount + bid_amount / 100 * 5;
+
+    users[x].call(
+        marketplace.account_id(),
+        "add_bid",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+            "ft_token_id": "near",
+            "amount": bid_amount.to_string()
+        }).to_string().into_bytes(),
+        DEFAULT_GAS,
+        bid_amount
+    ).assert_success();
+  }
+
+  chandra.call(
+    marketplace.account_id(), 
+    "delete_market_data", 
+    &json!({
+      "nft_contract_id": nft.account_id(),
+      "token_id": format!("{}:{}", "1", "1"),
+    }).to_string().into_bytes(), 
+    DEFAULT_GAS, 
+    1
+  ).assert_success();
+
+}
