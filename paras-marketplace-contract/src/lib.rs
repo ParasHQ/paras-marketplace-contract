@@ -1811,12 +1811,20 @@ impl Contract {
             .market
             .get(&contract_and_token_id)
             .expect("Paras: Token id does not exist");
+        let current_time: u64 = env::block_timestamp();
 
         assert!(
           [market_data.owner_id.clone(), self.owner_id.clone()]
             .contains(&env::predecessor_account_id()),
             "Paras: Seller or owner only"
         );
+
+        if env::predecessor_account_id() == self.owner_id {
+          assert!(
+            current_time >= market_data.ended_at.unwrap(),
+            "Paras: Auction has not ended yet"
+          );
+        }
 
         assert!(
             market_data.end_price.is_none(),
@@ -2097,6 +2105,7 @@ impl Contract {
     pub fn delete_market_data(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
         assert_one_yocto();
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+        let current_time: u64 = env::block_timestamp();
 
         let market_data: Option<MarketData> =
             if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
@@ -2128,6 +2137,13 @@ impl Contract {
                 .contains(&env::predecessor_account_id()),
             "Paras: Seller or owner only"
         );
+
+        if market_data.is_auction.unwrap() && env::predecessor_account_id() == self.owner_id {
+          assert!(
+            current_time >= market_data.ended_at.unwrap(),
+            "Paras: Auction has not ended yet"
+          );
+        }
 
         self.internal_delete_market_data(&nft_contract_id, &token_id);
 
