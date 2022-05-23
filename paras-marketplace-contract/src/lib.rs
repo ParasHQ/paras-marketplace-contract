@@ -8,7 +8,6 @@ use near_sdk::{
 };
 use near_sdk::{is_promise_success, promise_result_as_success};
 use std::collections::HashMap;
-use near_sdk::env::is_valid_account_id;
 
 use crate::external::*;
 
