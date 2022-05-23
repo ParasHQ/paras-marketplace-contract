@@ -1819,7 +1819,7 @@ impl Contract {
             "Paras: Seller or owner only"
         );
 
-        if market_data.is_auction.unwrap() && env::predecessor_account_id() == self.owner_id {
+        if env::predecessor_account_id() == self.owner_id {
           assert!(
             current_time >= market_data.ended_at.unwrap(),
             "Paras: Auction has not ended yet"
