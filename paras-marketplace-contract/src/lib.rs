@@ -1819,7 +1819,7 @@ impl Contract {
             "Paras: Seller or owner only"
         );
 
-        if env::predecessor_account_id() == self.owner_id {
+        if env::predecessor_account_id() == self.owner_id && market_data.ended_at.is_some() {
           assert!(
             current_time >= market_data.ended_at.unwrap(),
             "Paras: Auction has not ended yet"
@@ -1949,6 +1949,8 @@ impl Contract {
                     started_at = Some(U64(current_time));
                 }
             }
+
+            assert!(ended_at.is_some(), "Paras: Ended at is none")
         }
 
         if ended_at.is_some() {
@@ -2885,7 +2887,7 @@ mod tests {
             near_account(),
             U128::from(1 * 10u128.pow(24)),
             None,
-            None,
+            Some(U64(1999999952971000000)),
             None,
             Some(true),
         );
@@ -2909,7 +2911,7 @@ mod tests {
             near_account(),
             U128::from(1 * 10u128.pow(24)),
             None,
-            None,
+            Some(U64(1999999952971000000)),
             None,
             Some(true),
         );
@@ -2929,20 +2931,20 @@ mod tests {
         testing_env!(context.predecessor_account_id(accounts(0)).build());
 
         contract.internal_add_market_data(
-            accounts(0),
+            accounts(1),
             1,
             accounts(2),
             "1:1".to_string(),
             near_account(),
             U128::from(1 * 10u128.pow(24)),
             None,
-            None,
+            Some(U64(1999999952971000000)),
             None,
             Some(true),
         );
 
         testing_env!(context
-            .predecessor_account_id(accounts(1))
+            .predecessor_account_id(accounts(0))
             .attached_deposit(10u128.pow(24) + 1)
             .build());
 
@@ -2966,7 +2968,7 @@ mod tests {
         );
 
         testing_env!(context
-            .predecessor_account_id(accounts(0))
+            .predecessor_account_id(accounts(1))
             .attached_deposit(1)
             .build());
 
