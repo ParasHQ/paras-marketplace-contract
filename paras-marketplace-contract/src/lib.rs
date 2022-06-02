@@ -1669,6 +1669,7 @@ impl Contract {
                 "params": {
                     "nft_contract_id": nft_contract_id,
                     "token_id": token_id,
+                    "ended_at": extended_ended_at,
                 }
             })
             .to_string(),
