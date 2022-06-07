@@ -104,6 +104,179 @@ fn test_add_market_data() {
 }
 
 #[test]
+fn test_single_deposit(){
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        );
+
+    //buyer
+    let buyer_person = root.create_user(account_o(), to_yocto("100"));
+
+    let initial_storage_usage = marketplace.account().unwrap().storage_usage;
+
+    let outcome = buyer_person.call(
+        marketplace.account_id(),
+        "buy",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+        })
+            .to_string()
+            .into_bytes(),
+        GAS_BUY,
+        to_yocto("3"),
+    );
+
+    let restored_storage_price_for_buy =
+        initial_storage_usage - marketplace.account().unwrap().storage_usage;
+
+    println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+    println!(
+        "[BUY] Gas burnt: {} TeraGas",
+        outcome.gas_burnt().0 as f64 / 1e12
+    );
+    outcome.assert_success();
+    println!(
+        "[BUY] Restored storage price : {} Bytes",
+        restored_storage_price_for_buy
+    );
+    let expected_gas_ceiling = 50 * u64::pow(10, 12);
+    assert!(outcome.gas_burnt() < Gas(expected_gas_ceiling));
+}
+#[test]
+fn test_single_deposit_add_trade(){
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:2",
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    //buyer
+    let buyer_person = root.create_user(account_o(), to_yocto("100"));
+
+    let initial_storage_usage = marketplace.account().unwrap().storage_usage;
+
+    let outcome = buyer_person.call(
+        marketplace.account_id(),
+        "buy",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+        })
+            .to_string()
+            .into_bytes(),
+        GAS_BUY,
+        to_yocto("3"),
+    );
+
+    let restored_storage_price_for_buy =
+        initial_storage_usage - marketplace.account().unwrap().storage_usage;
+
+    println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+    println!(
+        "[BUY] Gas burnt: {} TeraGas",
+        outcome.gas_burnt().0 as f64 / 1e12
+    );
+    outcome.assert_success();
+    println!(
+        "[BUY] Restored storage price : {} Bytes",
+        restored_storage_price_for_buy
+    );
+    let expected_gas_ceiling = 50 * u64::pow(10, 12);
+    assert!(outcome.gas_burnt() < Gas(expected_gas_ceiling));
+}
+
+#[test]
 fn test_buy() {
     let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
 
