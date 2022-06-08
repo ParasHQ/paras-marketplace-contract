@@ -192,48 +192,23 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 approval_id,
             );
         } else if market_type == "accept_trade" {
+
             assert!(buyer_id.is_some(), "Paras: Account id is not specified");
             assert!(buyer_nft_contract_id.is_some(), "Paras: Buyer NFT contract id is not specified");
             assert!(buyer_token_id.is_some(), "Paras: Buyer token id is not specified");
-            let wbuyer_nft_contract_id= buyer_nft_contract_id.unwrap();
-            let wbuyer_id= buyer_id.unwrap();
-            let wbuyer_token_id= buyer_token_id.unwrap();
-
-            let buyer_contract_account_id_token_id =
-                make_triple(&wbuyer_nft_contract_id,
-                            &wbuyer_id,
-                            &wbuyer_token_id);
-            let contract_account_id_token_id = make_triple(&nft_contract_id,
-                                                           &wbuyer_id,
-                                                           &token_id);
-
-            if self
-                .trades
-                .get(&buyer_contract_account_id_token_id).is_some(){
-                env::log_str("Paras: Trade list does not exist");
-                return;
-            }
-
-            if self
-                .trades
-                .get(&buyer_contract_account_id_token_id).unwrap()
-                .trade_data
-                .get(&contract_account_id_token_id)
-                .is_some(){
-                env::log_str("Paras: Trade data does not exist");
-                return;
-            }
 
             self.internal_accept_trade(
                 nft_contract_id,
-                wbuyer_id,
+                buyer_id.unwrap(),
                 token_id,
                 owner_id,
                 approval_id,
-                wbuyer_nft_contract_id,
-                wbuyer_token_id
+                buyer_nft_contract_id.unwrap(),
+                buyer_token_id.unwrap()
             );
+
         } else if market_type == "accept_trade_paras_series" {
+
             assert!(buyer_id.is_some(), "Paras: Account id is not specified");
             assert!(
                 self.paras_nft_contracts.contains(&nft_contract_id),
@@ -241,47 +216,17 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             );
             assert!(buyer_nft_contract_id.is_some(), "Paras: Buyer NFT contract id is not specified");
             assert!(buyer_token_id.is_some(), "Paras: Buyer token id is not specified");
-            let mut token_id_iter = token_id.split(":");
-            let token_series_id: String = token_id_iter.next().unwrap().parse().unwrap();
-
-            let wbuyer_nft_contract_id= buyer_nft_contract_id.unwrap();
-            let wbuyer_id= buyer_id.unwrap();
-            let wbuyer_token_id= buyer_token_id.unwrap();
-
-            let buyer_contract_account_id_token_id =
-                make_triple(&wbuyer_nft_contract_id,
-                            &wbuyer_id,
-                            &wbuyer_token_id);
-            let contract_account_id_token_id = make_triple(&nft_contract_id,
-                                                           &wbuyer_id,
-                                                           &token_series_id);
-
-            if self
-                .trades
-                .get(&buyer_contract_account_id_token_id).is_some(){
-                env::log_str("Paras: Trade list does not exist");
-                return;
-            }
-
-            if self
-                .trades
-                .get(&buyer_contract_account_id_token_id).unwrap()
-                .trade_data
-                .get(&contract_account_id_token_id)
-                .is_some(){
-                env::log_str("Paras: Trade data does not exist");
-                return;
-            }
 
             self.internal_accept_trade_series(
                 nft_contract_id,
-                wbuyer_id,
+                buyer_id.unwrap(),
                 token_id,
                 owner_id,
                 approval_id,
-                wbuyer_nft_contract_id,
-                wbuyer_token_id
+                buyer_nft_contract_id.unwrap(),
+                buyer_token_id.unwrap()
             );
+
         }
     }
 }
