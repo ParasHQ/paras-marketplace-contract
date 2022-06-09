@@ -83,6 +83,15 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         if market_type == "sale" {
             assert!(price.is_some(), "Paras: price not specified");
 
+            // //replace old data approval id
+            let buyer_contract_account_id_token_id = make_triple(&nft_contract_id,
+                            &owner_id,
+                            &token_id);
+            if let Some(mut old_trade) = self.trades.get(&buyer_contract_account_id_token_id){
+                old_trade.approval_id = approval_id;
+                self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
+            }
+
             self.internal_delete_market_data(&nft_contract_id, &token_id);
 
             let storage_amount = self.storage_minimum_balance().0;
@@ -90,13 +99,15 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             let signer_storage_required =
                 (self.get_supply_by_owner_id(signer_id).0 + 1) as u128 * storage_amount;
 
-            assert!(
-                owner_paid_storage >= signer_storage_required,
-                "Insufficient storage paid: {}, for {} sales at {} rate of per sale",
+            if owner_paid_storage < signer_storage_required {
+                let notif=format!("Insufficient storage paid: {}, for {} sales at {} rate of per sale",
                 owner_paid_storage,
                 signer_storage_required / storage_amount,
-                storage_amount,
-            );
+                storage_amount
+                );
+                env::log_str(&notif);
+                return;
+            }
 
             let ft_token_id_res = ft_token_id.unwrap_or(near_account());
 
@@ -156,14 +167,8 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                             &owner_id,
                             &token_id);
             if let Some(mut old_trade) = self.trades.get(&buyer_contract_account_id_token_id){
-                // self.trades.remove(&buyer_contract_account_id_token_id);
-                // let new_trade_list=TradeList {
-                //     approval_id,
-                //     trade_data: old_trade.trade_data,
-                // };
                 old_trade.approval_id = approval_id;
                 self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
-                // self.trades.insert(&buyer_contract_account_id_token_id,&new_trade_list);
             }
 
             let storage_amount = self.storage_minimum_balance().0;

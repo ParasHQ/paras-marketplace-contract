@@ -388,15 +388,14 @@ fn test_multiple_add_trade_with_one_failed_trade(){
     );
 
     //no trade data for 1 => 3
-    // darmaji.call(
-    //     marketplace.account_id(),
-    //     "storage_deposit",
-    //     &json!({}).to_string().into_bytes(),
-    //     DEFAULT_GAS,
-    //     STORAGE_ADD_MARKET_DATA,
-    // )
-    //     .assert_success();
-    //
+    darmaji.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    ).assert_success();
+
     darmaji.call(
         nft.account_id(),
         "nft_approve",
@@ -538,18 +537,18 @@ fn test_add_trade_with_fail_sale(){
             &json!({
                 "token_id": format!("{}:{}", "1", "1"),
                 "account_id": marketplace.account_id(),
-                "msg": &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"}).to_string(),
+                "msg": &json!({"market_type":"sale","price": to_yocto("3").to_string(),
+                "ft_token_id": "near"}).to_string(),
             })
                 .to_string()
                 .into_bytes(),
             DEFAULT_GAS,
             STORAGE_APPROVE,
         );
-
     println!("{:?}", outcome_fail_sale.promise_errors());
 
-    //check fail sale
-    darmaji.call(
+    //check fail sale => No Market Data
+    let check_fail_sale = darmaji.call(
         marketplace.account_id(),
         "buy",
         &json!({
@@ -561,6 +560,8 @@ fn test_add_trade_with_fail_sale(){
         GAS_BUY,
         to_yocto("3"),
     );
+    println!("{:?}",check_fail_sale.promise_errors());
+
     //accept trade 1 => 2
     darmaji.call(
         marketplace.account_id(),
