@@ -531,20 +531,23 @@ fn test_add_trade_with_fail_sale(){
     ).assert_success();
 
     //add fail sale
-    chandra
+    let outcome_fail_sale = chandra
         .call(
             nft.account_id(),
             "nft_approve",
             &json!({
                 "token_id": format!("{}:{}", "1", "1"),
                 "account_id": marketplace.account_id(),
-                "msg": &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"}),
+                "msg": &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"}).to_string(),
             })
                 .to_string()
                 .into_bytes(),
             DEFAULT_GAS,
             STORAGE_APPROVE,
         );
+
+    println!("{:?}", outcome_fail_sale.promise_errors());
+
     //check fail sale
     darmaji.call(
         marketplace.account_id(),
@@ -568,7 +571,7 @@ fn test_add_trade_with_fail_sale(){
     )
         .assert_success();
 
-    darmaji.call(
+    let outcome = darmaji.call(
         nft.account_id(),
         "nft_approve",
         &json!({
@@ -585,7 +588,9 @@ fn test_add_trade_with_fail_sale(){
             .into_bytes(),
         DEFAULT_GAS,
         10u128.pow(24),
-    ).assert_success();
+    );
+
+    println!("{:?}", outcome.promise_errors());
 
     let chandra_token: Token = nft
         .view(
