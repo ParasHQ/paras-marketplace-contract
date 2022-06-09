@@ -92,8 +92,6 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
             }
 
-            self.internal_delete_market_data(&nft_contract_id, &token_id);
-
             let storage_amount = self.storage_minimum_balance().0;
             let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
             let signer_storage_required =
@@ -108,6 +106,8 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 env::log_str(&notif);
                 return;
             }
+            
+            self.internal_delete_market_data(&nft_contract_id, &token_id);
 
             let ft_token_id_res = ft_token_id.unwrap_or(near_account());
 
