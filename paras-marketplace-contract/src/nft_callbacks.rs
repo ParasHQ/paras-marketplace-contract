@@ -1,6 +1,5 @@
 use crate::*;
 /// approval callbacks from NFT Contracts
-const DELIMETER: &str = "||";
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct MarketArgs {
@@ -152,19 +151,19 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 market_data.approval_id = approval_id;
                 self.market.insert(&contract_and_token_id, &market_data);
             }
-            //replace old data approval id
+            // //replace old data approval id
             let buyer_contract_account_id_token_id = make_triple(&nft_contract_id,
                             &owner_id,
                             &token_id);
             if let Some(mut old_trade) = self.trades.get(&buyer_contract_account_id_token_id){
-                self.trades.remove(&buyer_contract_account_id_token_id);
-                let new_trade_list=TradeList {
-                    approval_id,
-                    trade_data: old_trade.trade_data,
-                };
-                // old_trade.approval_id = approval_id
-                // self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
-                self.trades.insert(&buyer_contract_account_id_token_id,&new_trade_list);
+                // self.trades.remove(&buyer_contract_account_id_token_id);
+                // let new_trade_list=TradeList {
+                //     approval_id,
+                //     trade_data: old_trade.trade_data,
+                // };
+                old_trade.approval_id = approval_id;
+                self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
+                // self.trades.insert(&buyer_contract_account_id_token_id,&new_trade_list);
             }
 
             let storage_amount = self.storage_minimum_balance().0;
@@ -172,7 +171,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             let signer_storage_required =
                 (self.get_supply_by_owner_id(signer_id).0 + 1) as u128 * storage_amount;
 
-            if owner_paid_storage <= signer_storage_required {
+            if owner_paid_storage < signer_storage_required {
                 let notif=format!("Insufficient storage paid: {}, for {} sales at {} rate of per sale",
                                   owner_paid_storage,
                                   signer_storage_required / storage_amount,
@@ -229,11 +228,4 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
 
         }
     }
-}
-
-fn make_triple(nft_contract_id: &AccountId, buyer_id: &AccountId, token: &str) -> String {
-    format!(
-        "{}{}{}{}{}",
-        nft_contract_id, DELIMETER, buyer_id, DELIMETER, token
-    )
 }

@@ -397,24 +397,24 @@ fn test_multiple_add_trade_with_one_failed_trade(){
     // )
     //     .assert_success();
     //
-    // darmaji.call(
-    //     nft.account_id(),
-    //     "nft_approve",
-    //     &json!({
-    //         "token_id": "1:3",
-    //         "account_id": marketplace.account_id(),
-    //         "msg": &json!{{
-    //             "market_type": "accept_trade",
-    //             "buyer_id": chandra.account_id(),
-    //             "buyer_nft_contract_id": nft.account_id(),
-    //             "buyer_token_id": "1:1"
-    //         }}.to_string()
-    //     })
-    //         .to_string()
-    //         .into_bytes(),
-    //     DEFAULT_GAS,
-    //     10u128.pow(24),
-    // );
+    darmaji.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:3",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "accept_trade",
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    );
 
     //accept trade 1 => 2
     darmaji.call(
