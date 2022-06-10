@@ -1,7 +1,5 @@
 use crate::*;
-
 /// approval callbacks from NFT Contracts
-
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct MarketArgs {
@@ -85,20 +83,31 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         if market_type == "sale" {
             assert!(price.is_some(), "Paras: price not specified");
 
-            self.internal_delete_market_data(&nft_contract_id, &token_id);
+            // //replace old data approval id
+            let buyer_contract_account_id_token_id = make_triple(&nft_contract_id,
+                            &owner_id,
+                            &token_id);
+            if let Some(mut old_trade) = self.trades.get(&buyer_contract_account_id_token_id){
+                old_trade.approval_id = approval_id;
+                self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
+            }
 
             let storage_amount = self.storage_minimum_balance().0;
             let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
             let signer_storage_required =
                 (self.get_supply_by_owner_id(signer_id).0 + 1) as u128 * storage_amount;
 
-            assert!(
-                owner_paid_storage >= signer_storage_required,
-                "Insufficient storage paid: {}, for {} sales at {} rate of per sale",
+            if owner_paid_storage < signer_storage_required {
+                let notif=format!("Insufficient storage paid: {}, for {} sales at {} rate of per sale",
                 owner_paid_storage,
                 signer_storage_required / storage_amount,
-                storage_amount,
-            );
+                storage_amount
+                );
+                env::log_str(&notif);
+                return;
+            }
+            
+            self.internal_delete_market_data(&nft_contract_id, &token_id);
 
             let ft_token_id_res = ft_token_id.unwrap_or(near_account());
 
@@ -147,23 +156,34 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 price.unwrap().0,
             );
         } else if market_type == "add_trade" {
+            // old market data
+            let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+            if let Some(mut market_data) = self.market.get(&contract_and_token_id) {
+                market_data.approval_id = approval_id;
+                self.market.insert(&contract_and_token_id, &market_data);
+            }
+            // //replace old data approval id
+            let buyer_contract_account_id_token_id = make_triple(&nft_contract_id,
+                            &owner_id,
+                            &token_id);
+            if let Some(mut old_trade) = self.trades.get(&buyer_contract_account_id_token_id){
+                old_trade.approval_id = approval_id;
+                self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
+            }
+
             let storage_amount = self.storage_minimum_balance().0;
             let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
             let signer_storage_required =
                 (self.get_supply_by_owner_id(signer_id).0 + 1) as u128 * storage_amount;
 
-            assert!(
-                owner_paid_storage >= signer_storage_required,
-                "Insufficient storage paid: {}, for {} sales at {} rate of per sale",
-                owner_paid_storage,
-                signer_storage_required / storage_amount,
-                storage_amount,
-            );
-
-            let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
-            if let Some(mut market_data) = self.market.get(&contract_and_token_id) {
-                market_data.approval_id = approval_id;
-                self.market.insert(&contract_and_token_id, &market_data);
+            if owner_paid_storage < signer_storage_required {
+                let notif=format!("Insufficient storage paid: {}, for {} sales at {} rate of per sale",
+                                  owner_paid_storage,
+                                  signer_storage_required / storage_amount,
+                                  storage_amount
+                );
+                env::log_str(&notif);
+                return;
             }
 
             self.add_trade(
@@ -176,6 +196,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 approval_id,
             );
         } else if market_type == "accept_trade" {
+
             assert!(buyer_id.is_some(), "Paras: Account id is not specified");
             assert!(buyer_nft_contract_id.is_some(), "Paras: Buyer NFT contract id is not specified");
             assert!(buyer_token_id.is_some(), "Paras: Buyer token id is not specified");
@@ -189,7 +210,9 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 buyer_nft_contract_id.unwrap(),
                 buyer_token_id.unwrap()
             );
+
         } else if market_type == "accept_trade_paras_series" {
+
             assert!(buyer_id.is_some(), "Paras: Account id is not specified");
             assert!(
                 self.paras_nft_contracts.contains(&nft_contract_id),
@@ -207,6 +230,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 buyer_nft_contract_id.unwrap(),
                 buyer_token_id.unwrap()
             );
+
         }
     }
 }

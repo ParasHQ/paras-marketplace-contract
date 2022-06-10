@@ -237,7 +237,7 @@ impl Contract {
             trades: UnorderedMap::new(StorageKey::Trade),
             market_data_transaction_fee: MarketDataTransactionFee{
                 transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee)
-            } 
+            }
         };
 
         this.approved_ft_token_ids.insert(&near_account());
@@ -276,7 +276,7 @@ impl Contract {
             trades: prev.trades,
             market_data_transaction_fee: MarketDataTransactionFee{
                 transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee)
-            } 
+            }
         };
 
         this
@@ -1392,6 +1392,7 @@ impl Contract {
             make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
 
+
         let trade_list = self
             .trades
             .get(&buyer_contract_account_id_token_id)
@@ -1401,8 +1402,6 @@ impl Contract {
             .trade_data
             .get(&contract_account_id_token_id)
             .expect("Paras: Trade data does not exist");
-
-        assert_eq!(trade_data.token_id.as_ref().unwrap(), &token_id);
 
         self.internal_delete_market_data(&nft_contract_id, &token_id);
         self.internal_delete_market_data(&buyer_nft_contract_id, &buyer_token_id);
@@ -1449,6 +1448,7 @@ impl Contract {
             make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
         let contract_account_id_token_id =
             make_triple(&nft_contract_id, &buyer_id, &token_series_id);
+
 
         let trade_list = self
             .trades
@@ -1748,7 +1748,7 @@ impl Contract {
         !bids.is_empty(),
         "Paras: Bids data does not exist"
       );
-      
+
       // Retain all elements except account_id
       bids.retain(|bid| {
         if bid.bidder_id == account_id {
@@ -3023,7 +3023,7 @@ mod tests {
         assert_eq!(contract.get_transaction_fee().next_fee, None);
         assert_eq!(contract.get_transaction_fee().start_time, None);
     }
-    
+
     #[test]
     fn test_transaction_fee_locked(){
         let (mut context, mut contract) = setup_contract();
