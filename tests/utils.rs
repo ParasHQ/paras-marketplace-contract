@@ -87,6 +87,21 @@ pub fn create_nft_and_mint_one(
             to_yocto("1") + STORAGE_MINT_ESTIMATE,
         )
         .assert_success();
+
+    receiver_id_2
+        .call(
+            nft.account_id(),
+            "nft_buy",
+            &json!({
+                "token_series_id": "1",
+                "receiver_id": receiver_id_2.account_id(),
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            to_yocto("1") + STORAGE_MINT_ESTIMATE,
+        )
+        .assert_success();
 }
 
 pub fn init() -> (
