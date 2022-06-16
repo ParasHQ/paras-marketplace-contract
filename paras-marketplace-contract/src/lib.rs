@@ -23,6 +23,7 @@ const NO_DEPOSIT: Balance = 0;
 const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
 
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
+pub const FIVE_MINUTES: u64 = 300000000000;
 
 pub type PayoutHashMap = HashMap<AccountId, U128>;
 pub type ContractAndTokenId = String;
@@ -1641,8 +1642,8 @@ impl Contract {
             .expect("Paras: Token id does not exist");
 
         let bidder_id = env::predecessor_account_id();
-
         let current_time = env::block_timestamp();
+
         if market_data.started_at.is_some() {
             assert!(
                 current_time >= market_data.started_at.unwrap(),
@@ -1655,6 +1656,24 @@ impl Contract {
                 current_time <= market_data.ended_at.unwrap(),
                 "Paras: Sale has ended"
             );
+        }
+
+        let remaining_time = market_data.ended_at.unwrap() - current_time;
+        if remaining_time <= FIVE_MINUTES {
+          let extended_ended_at = market_data.ended_at.unwrap() + FIVE_MINUTES;
+          market_data.ended_at = Some(extended_ended_at);
+
+          env::log_str(
+            &json!({
+                "type": "extend_auction",
+                "params": {
+                    "nft_contract_id": nft_contract_id,
+                    "token_id": token_id,
+                    "ended_at": extended_ended_at,
+                }
+            })
+            .to_string(),
+          );
         }
 
         assert_ne!(market_data.owner_id, bidder_id, "Paras: Owner cannot bid their own token");
