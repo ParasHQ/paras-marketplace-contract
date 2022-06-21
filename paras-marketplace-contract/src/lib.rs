@@ -3057,7 +3057,7 @@ mod tests {
             .attached_deposit(1)
             .build());
 
-        contract.accept_bid(accounts(2), "1:1".to_string());
+        contract.end_auction(accounts(2), "1:1".to_string());
     }
 
     #[test]
