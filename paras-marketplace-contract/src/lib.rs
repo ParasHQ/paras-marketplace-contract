@@ -1873,6 +1873,73 @@ impl Contract {
         );
     }
 
+    #[payable]
+    pub fn end_auction(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
+      assert_one_yocto();
+
+      let current_time = env::block_timestamp();
+      let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, &token_id);
+      let mut market_data = self
+          .market
+          .get(&contract_and_token_id)
+          .expect("Paras: Market data does not exist");
+
+      assert!(
+        [market_data.owner_id.clone(), self.owner_id.clone()]
+          .contains(&env::predecessor_account_id()),
+        "Paras: Seller or owner only"
+      );
+
+      if env::predecessor_account_id() == self.owner_id && market_data.ended_at.is_some() {
+        assert!(
+          current_time >= market_data.ended_at.unwrap(),
+          "Paras: Auction has not ended yet (for owner)"
+        );
+      }
+
+      assert!(
+        market_data.end_price.is_none(),
+        "Paras: Dutch auction does not accept accept_bid"
+      );
+
+      let mut bids = market_data.bids.unwrap();
+
+      if bids.is_empty() {
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+
+        env::log_str(
+            &json!({
+                "type": "delete_market_data",
+                "params": {
+                    "owner_id": market_data.owner_id,
+                    "nft_contract_id": nft_contract_id,
+                    "token_id": token_id,
+                }
+            })
+            .to_string(),
+        );
+      } else {
+        let selected_bid = bids.remove(bids.len() - 1);
+
+        // refund all except selected bids
+        for bid in &bids {
+          Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+        }
+
+        bids.clear();
+
+        market_data.bids = Some(bids);
+        self.market.insert(&contract_and_token_id, &market_data);
+
+        self.internal_process_purchase(
+            nft_contract_id,
+            token_id,
+            selected_bid.bidder_id.clone(),
+            selected_bid.price.clone().0
+        );
+      }
+    }
+
     // Market Data functions
 
     #[payable]
@@ -2990,7 +3057,7 @@ mod tests {
             .attached_deposit(1)
             .build());
 
-        contract.accept_bid(accounts(2), "1:1".to_string());
+        contract.end_auction(accounts(2), "1:1".to_string());
     }
 
     #[test]
