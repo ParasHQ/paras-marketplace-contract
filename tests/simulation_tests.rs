@@ -336,7 +336,7 @@ fn test_multiple_add_trade_with_one_failed_trade(){
     5. other user check that trade NFT 1 with NFT 3 does not exist
     6. user B accept trade NFT 2 with NFT 1 (from step 2)
      */
-    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
     create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
 
@@ -497,7 +497,7 @@ fn test_add_trade_with_fail_sale(){
     5. other user check that sale NFT 1 does not exist
     6. user B accept trade NFT 2 with NFT 1 (from step 2)
      */
-    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
     create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
 
@@ -817,6 +817,98 @@ fn test_accept_offer() {
 }
 
 #[test]
+fn test_accept_offer_deleted_offer_data() {
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+
+    //owner marketplace and nft-> alice
+    //seller -> chandra 
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": format!("{}:{}", "1", "1"),
+            "account_id": marketplace.account_id(),
+            "msg": msg,
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_APPROVE,
+    ).assert_success();
+
+    let market_data: MarketDataJson = chandra 
+        .view(
+            marketplace.account_id(),
+            "get_market_data",
+            &json!({
+                "nft_contract_id": nft.account_id(),
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+    let initial_approval_id = market_data.approval_id.0;
+
+    // chandra accept bid and nft_approve to marketplace but the offer data has been deleted or doesn't exists
+    // should be updated chandra's approval id
+    let msg = &json!(
+        {"market_type":"accept_offer","buyer_id": bob.account_id, "price": U128(10u128.pow(24))})
+    .to_string();
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+            .to_string()
+            .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    let market_data: MarketDataJson = chandra
+        .view(
+            marketplace.account_id(),
+            "get_market_data",
+            &json!({
+                "nft_contract_id": nft.account_id(),
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+
+    let updated_approval_id = market_data.approval_id.0;
+    println!("[ACCEPT_OFFER_DELETED_OFFER_DATA] Initial approval id:  {}", &initial_approval_id);
+    println!("[ACCEPT_OFFER_DELETED_OFFER_DATA] Updated approval id:  {}", &updated_approval_id);
+    assert_eq!(&initial_approval_id, &1);
+    assert_eq!(&updated_approval_id, &(initial_approval_id + 1));
+}
+
+#[test]
 fn test_accept_offer_paras_series() {
     let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
@@ -886,6 +978,98 @@ fn test_accept_offer_paras_series() {
         .unwrap_json();
 
     assert_eq!(token.owner_id, bob.account_id());
+}
+
+#[test]
+fn test_accept_offer_series_deleted_offer_data() {
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+
+    //owner marketplace and nft-> alice
+    //seller -> chandra 
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": format!("{}:{}", "1", "1"),
+            "account_id": marketplace.account_id(),
+            "msg": msg,
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_APPROVE,
+    ).assert_success();
+
+    let market_data: MarketDataJson = chandra 
+        .view(
+            marketplace.account_id(),
+            "get_market_data",
+            &json!({
+                "nft_contract_id": nft.account_id(),
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+    let initial_approval_id = market_data.approval_id.0;
+
+    // chandra accept bid and nft_approve to marketplace but the offer data has been deleted or doesn't exists
+    // should be updated chandra's approval id
+    let msg = &json!(
+        {"market_type":"accept_offer_paras_series","buyer_id": bob.account_id, "price": U128(10u128.pow(24))})
+    .to_string();
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+            .to_string()
+            .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    let market_data: MarketDataJson = chandra
+        .view(
+            marketplace.account_id(),
+            "get_market_data",
+            &json!({
+                "nft_contract_id": nft.account_id(),
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+
+    let updated_approval_id = market_data.approval_id.0;
+    println!("[ACCEPT_OFFER_SERIES_DELETED_OFFER_DATA] Initial approval id:  {}", &initial_approval_id);
+    println!("[ACCEPT_OFFER_SERIES_DELETED_OFFER_DATA] Updated approval id:  {}", &updated_approval_id);
+    assert_eq!(&initial_approval_id, &1);
+    assert_eq!(&updated_approval_id, &(initial_approval_id + 1));
 }
 
 // //trade
