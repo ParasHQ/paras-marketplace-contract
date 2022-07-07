@@ -915,8 +915,9 @@ impl Contract {
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
         let offer_data_raw = self.offers.get(&contract_account_id_token_id); 
 
-        if !offer_data_raw.is_some(){
+        if offer_data_raw.is_none() {
             self.internal_update_approval_id(&approval_id, &nft_contract_id, &seller_id, &token_id);
+            env::log_str("Paras: Offer does not exist");
             return PromiseOrValue::Value(false);
         }
 
@@ -973,8 +974,9 @@ impl Contract {
             make_triple(&nft_contract_id, &buyer_id, &token_series_id);
 
         let offer_data_raw = self.offers.get(&contract_account_id_token_id);
-        if !offer_data_raw.is_some(){
+        if offer_data_raw.is_none() {
             self.internal_update_approval_id(&approval_id, &nft_contract_id, &seller_id, &token_id);
+            env::log_str("Paras: Offer does not exist");
             return PromiseOrValue::Value(false);
         }
 
