@@ -6,7 +6,7 @@ use near_sdk::{
     assert_one_yocto, env, ext_contract, near_bindgen, serde_json::json, AccountId, Balance,
     BorshStorageKey, CryptoHash, Gas, PanicOnDefault, Promise, Timestamp,
 };
-use near_sdk::{is_promise_success, promise_result_as_success};
+use near_sdk::{is_promise_success, promise_result_as_success, PromiseOrValue};
 use std::collections::HashMap;
 
 use crate::external::*;
@@ -887,6 +887,22 @@ impl Contract {
         }
     }
 
+    #[private]
+    fn internal_update_approval_id(&mut self, approval_id: &u64, nft_contract_id: &AccountId, account_id: &AccountId, token_id: &TokenId){
+        let contract_account_id_token_id = make_triple(&nft_contract_id, &account_id, &token_id);
+        let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+
+        if let Some(mut trade_data) = self.trades.get(&contract_account_id_token_id){
+            trade_data.approval_id = approval_id.clone();
+            self.trades.insert(&contract_account_id_token_id, &trade_data);
+        }
+
+        if let Some(mut market_data) = self.market.get(&contract_and_token_id){
+            market_data.approval_id = approval_id.clone();
+            self.market.insert(&contract_and_token_id, &market_data);
+        }
+    }
+
     fn internal_accept_offer(
         &mut self,
         nft_contract_id: AccountId,
@@ -895,15 +911,19 @@ impl Contract {
         seller_id: AccountId,
         approval_id: u64,
         price: u128,
-    ) -> Promise {
+    ) -> PromiseOrValue<bool>{
         let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
+        let offer_data_raw = self.offers.get(&contract_account_id_token_id); 
+
+        if offer_data_raw.is_none() {
+            self.internal_update_approval_id(&approval_id, &nft_contract_id, &seller_id, &token_id);
+            env::log_str("Paras: Offer does not exist");
+            return PromiseOrValue::Value(false);
+        }
 
         self.internal_delete_market_data(&nft_contract_id, &token_id);
 
-        let offer_data = self
-            .offers
-            .get(&contract_account_id_token_id)
-            .expect("Paras: Offer does not exist");
+        let offer_data = offer_data_raw.unwrap();
 
         assert_eq!(offer_data.token_id.as_ref().unwrap(), &token_id);
         assert_eq!(offer_data.price, price);
@@ -916,25 +936,26 @@ impl Contract {
             )
             .expect("Paras: Offer does not exist");
 
-
-        ext_contract::nft_transfer_payout(
-            offer_data.buyer_id.clone(),
-            token_id.clone(),
-            Some(approval_id),
-            Some(U128::from(offer_data.price)),
-            Some(10u32), // max length payout
-            nft_contract_id,
-            1,
-            GAS_FOR_NFT_TRANSFER,
+        PromiseOrValue::Promise(
+            ext_contract::nft_transfer_payout(
+                offer_data.buyer_id.clone(),
+                token_id.clone(),
+                Some(approval_id),
+                Some(U128::from(offer_data.price)),
+                Some(10u32), // max length payout
+                nft_contract_id,
+                1,
+                GAS_FOR_NFT_TRANSFER,
+            )
+            .then(ext_self::resolve_offer(
+                seller_id,
+                offer_data,
+                token_id,
+                env::current_account_id(),
+                NO_DEPOSIT,
+                GAS_FOR_ROYALTIES,
+            ))
         )
-        .then(ext_self::resolve_offer(
-            seller_id,
-            offer_data,
-            token_id,
-            env::current_account_id(),
-            NO_DEPOSIT,
-            GAS_FOR_ROYALTIES,
-        ))
     }
 
     fn internal_accept_offer_series(
@@ -945,21 +966,23 @@ impl Contract {
         seller_id: AccountId,
         approval_id: u64,
         price: u128,
-    ) -> Promise {
+    ) -> PromiseOrValue<bool> {
         // Token delimiter : is specific for Paras NFT
-
         let mut token_id_iter = token_id.split(":");
         let token_series_id: String = token_id_iter.next().unwrap().parse().unwrap();
-
         let contract_account_id_token_id =
             make_triple(&nft_contract_id, &buyer_id, &token_series_id);
 
+        let offer_data_raw = self.offers.get(&contract_account_id_token_id);
+        if offer_data_raw.is_none() {
+            self.internal_update_approval_id(&approval_id, &nft_contract_id, &seller_id, &token_id);
+            env::log_str("Paras: Offer does not exist");
+            return PromiseOrValue::Value(false);
+        }
+
         self.internal_delete_market_data(&nft_contract_id, &token_id);
 
-        let offer_data = self
-            .offers
-            .get(&contract_account_id_token_id)
-            .expect("Paras: Offer does not exist");
+        let offer_data = offer_data_raw.unwrap(); 
 
         assert_eq!(
             offer_data.token_series_id.as_ref().unwrap(),
@@ -974,24 +997,26 @@ impl Contract {
         )
         .expect("Paras: Offer does not exist");
 
-        ext_contract::nft_transfer_payout(
-            offer_data.buyer_id.clone(),
-            token_id.clone(),
-            Some(approval_id),
-            Some(U128::from(offer_data.price)),
-            Some(10u32), // max length payout
-            nft_contract_id,
-            1,
-            GAS_FOR_NFT_TRANSFER,
+        PromiseOrValue::Promise(
+            ext_contract::nft_transfer_payout(
+                offer_data.buyer_id.clone(),
+                token_id.clone(),
+                Some(approval_id),
+                Some(U128::from(offer_data.price)),
+                Some(10u32), // max length payout
+                nft_contract_id,
+                1,
+                GAS_FOR_NFT_TRANSFER,
+            )
+            .then(ext_self::resolve_offer(
+                seller_id,
+                offer_data,
+                token_id,
+                env::current_account_id(),
+                NO_DEPOSIT,
+                GAS_FOR_ROYALTIES,
+            ))
         )
-        .then(ext_self::resolve_offer(
-            seller_id,
-            offer_data,
-            token_id,
-            env::current_account_id(),
-            NO_DEPOSIT,
-            GAS_FOR_ROYALTIES,
-        ))
     }
 
     #[private]
@@ -1399,7 +1424,7 @@ impl Contract {
             .get(&buyer_contract_account_id_token_id)
             .expect("Paras: Trade list does not exist");
 
-        let trade_data = trade_list
+        trade_list
             .trade_data
             .get(&contract_account_id_token_id)
             .expect("Paras: Trade data does not exist");
@@ -1871,6 +1896,73 @@ impl Contract {
             selected_bid.bidder_id.clone(),
             selected_bid.price.clone().0,
         );
+    }
+
+    #[payable]
+    pub fn end_auction(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
+      assert_one_yocto();
+
+      let current_time = env::block_timestamp();
+      let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, &token_id);
+      let mut market_data = self
+          .market
+          .get(&contract_and_token_id)
+          .expect("Paras: Market data does not exist");
+
+      assert!(
+        [market_data.owner_id.clone(), self.owner_id.clone()]
+          .contains(&env::predecessor_account_id()),
+        "Paras: Seller or owner only"
+      );
+
+      if env::predecessor_account_id() == self.owner_id && market_data.ended_at.is_some() {
+        assert!(
+          current_time >= market_data.ended_at.unwrap(),
+          "Paras: Auction has not ended yet (for owner)"
+        );
+      }
+
+      assert!(
+        market_data.end_price.is_none(),
+        "Paras: Dutch auction does not accept accept_bid"
+      );
+
+      let mut bids = market_data.bids.unwrap();
+
+      if bids.is_empty() {
+        self.internal_delete_market_data(&nft_contract_id, &token_id);
+
+        env::log_str(
+            &json!({
+                "type": "delete_market_data",
+                "params": {
+                    "owner_id": market_data.owner_id,
+                    "nft_contract_id": nft_contract_id,
+                    "token_id": token_id,
+                }
+            })
+            .to_string(),
+        );
+      } else {
+        let selected_bid = bids.remove(bids.len() - 1);
+
+        // refund all except selected bids
+        for bid in &bids {
+          Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+        }
+
+        bids.clear();
+
+        market_data.bids = Some(bids);
+        self.market.insert(&contract_and_token_id, &market_data);
+
+        self.internal_process_purchase(
+            nft_contract_id,
+            token_id,
+            selected_bid.bidder_id.clone(),
+            selected_bid.price.clone().0
+        );
+      }
     }
 
     // Market Data functions
@@ -2990,7 +3082,7 @@ mod tests {
             .attached_deposit(1)
             .build());
 
-        contract.accept_bid(accounts(2), "1:1".to_string());
+        contract.end_auction(accounts(2), "1:1".to_string());
     }
 
     #[test]
