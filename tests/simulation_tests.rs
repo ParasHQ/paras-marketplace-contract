@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 use near_contract_standards::non_fungible_token::Token;
 use near_sdk::{
     json_types::{U128, U64},

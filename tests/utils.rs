@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use near_sdk::{serde_json::json, AccountId};
 use near_sdk_sim::{
     deploy, init_simulator, to_yocto, ContractAccount, UserAccount, STORAGE_AMOUNT,
 };
+use near_sdk_sim::lazy_static_include::syn::export::str;
 use paras_marketplace_contract::ContractContract as MarketplaceContract;
 
 near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
@@ -13,7 +15,7 @@ pub const DEFAULT_GAS: u64 = near_sdk_sim::DEFAULT_GAS;
 pub const NFT_ID_STR: &str = "nft";
 
 pub const STORAGE_MINT_ESTIMATE: u128 = 11280000000000000000000;
-pub const STORAGE_CREATE_SERIES_ESTIMATE: u128 = 8540000000000000000000;
+pub const STORAGE_CREATE_SERIES_ESTIMATE: u128 = 23900000000000000000000;
 
 // After calculation
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
@@ -27,7 +29,68 @@ pub fn create_nft_and_mint_one(
     receiver_id_1: &UserAccount,
     receiver_id_2: &UserAccount,
 ) {
-    owner
+
+    let royalties: HashMap<AccountId,u32> = HashMap::from([
+        ( owner.account_id.clone(), 100u32),
+        ( AccountId::new_unchecked("h".repeat(64)) , 100u32),
+        ( AccountId::new_unchecked("h2".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("h3".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("h4".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("h5".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("h6".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("h7".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("h8".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("h9".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("i".repeat(64)) , 100u32),
+        ( AccountId::new_unchecked("i2".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("i3".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("i4".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("i5".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("i6".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("i7".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("i8".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("i9".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("j".repeat(64)) , 100u32),
+        ( AccountId::new_unchecked("j2".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("j3".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("j4".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("j5".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("j6".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("j7".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("j8".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("j9".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("k".repeat(64)) , 100u32),
+        ( AccountId::new_unchecked("k2".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("k3".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("k4".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("k5".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("k6".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("k7".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("k8".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("k9".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("l".repeat(64)) , 100u32),
+        ( AccountId::new_unchecked("l2".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("l3".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("l4".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("l5".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("l6".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("l7".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("l8".repeat(32)) , 100u32),
+        ( AccountId::new_unchecked("l9".repeat(32)) , 100u32)
+    ]);
+    println!("{}",&json!({
+                "token_metadata": {
+                    "title": "A".repeat(200),
+                    "reference": "A".repeat(59),
+                    "media": "A".repeat(59),
+                    "copies": 100u64,
+                },
+                "creator_id": creator.account_id(),
+                "price": to_yocto("1").to_string(),
+                "royalty": royalties,
+            })
+        .to_string());
+    creator
         .call(
             nft.account_id(),
             "nft_create_series",
@@ -40,16 +103,7 @@ pub fn create_nft_and_mint_one(
                 },
                 "creator_id": creator.account_id(),
                 "price": to_yocto("1").to_string(),
-                "royalty": {
-                    owner.account_id.clone(): 1000u32,
-                    "g".repeat(64): 1000u32,
-                    "h".repeat(64): 1000u32,
-                    "i".repeat(64): 1000u32,
-                    "j".repeat(64): 1000u32,
-                    "k".repeat(64): 1000u32,
-                    "l".repeat(64): 1000u32,
-                    "m".repeat(64): 500u32,
-                },
+                "royalty": royalties,
             })
             .to_string()
             .into_bytes(),
@@ -103,22 +157,79 @@ pub fn init() -> (
 
     let treasury = root.create_user(
         AccountId::new_unchecked("treasury".to_string()),
-        to_yocto("100"),
+        to_yocto("100000"),
     );
 
+
     root.create_user(account_from(&"g"), to_yocto("100"));
+    root.create_user(account_from(&"g2"), to_yocto("100"));
+    root.create_user(account_from(&"g3"), to_yocto("100"));
+    root.create_user(account_from(&"g4"), to_yocto("100"));
+    root.create_user(account_from(&"g5"), to_yocto("100"));
+    root.create_user(account_from(&"g6"), to_yocto("100"));
+    root.create_user(account_from(&"g7"), to_yocto("100"));
+    root.create_user(account_from(&"g8"), to_yocto("100"));
+    root.create_user(account_from(&"g9"), to_yocto("100"));
 
     root.create_user(account_from(&"h"), to_yocto("100"));
+    root.create_user(account_from(&"h2"), to_yocto("100"));
+    root.create_user(account_from(&"h3"), to_yocto("100"));
+    root.create_user(account_from(&"h4"), to_yocto("100"));
+    root.create_user(account_from(&"h5"), to_yocto("100"));
+    root.create_user(account_from(&"h6"), to_yocto("100"));
+    root.create_user(account_from(&"h7"), to_yocto("100"));
+    root.create_user(account_from(&"h8"), to_yocto("100"));
+    root.create_user(account_from(&"h9"), to_yocto("100"));
 
     root.create_user(account_from(&"i"), to_yocto("100"));
+    root.create_user(account_from(&"i2"), to_yocto("100"));
+    root.create_user(account_from(&"i3"), to_yocto("100"));
+    root.create_user(account_from(&"i4"), to_yocto("100"));
+    root.create_user(account_from(&"i5"), to_yocto("100"));
+    root.create_user(account_from(&"i6"), to_yocto("100"));
+    root.create_user(account_from(&"i7"), to_yocto("100"));
+    root.create_user(account_from(&"i8"), to_yocto("100"));
+    root.create_user(account_from(&"i9"), to_yocto("100"));
 
     root.create_user(account_from(&"j"), to_yocto("100"));
+    root.create_user(account_from(&"j2"), to_yocto("100"));
+    root.create_user(account_from(&"j3"), to_yocto("100"));
+    root.create_user(account_from(&"j4"), to_yocto("100"));
+    root.create_user(account_from(&"j5"), to_yocto("100"));
+    root.create_user(account_from(&"j6"), to_yocto("100"));
+    root.create_user(account_from(&"j7"), to_yocto("100"));
+    root.create_user(account_from(&"j8"), to_yocto("100"));
+    root.create_user(account_from(&"j9"), to_yocto("100"));
 
     root.create_user(account_from(&"k"), to_yocto("100"));
+    root.create_user(account_from(&"k2"), to_yocto("100"));
+    root.create_user(account_from(&"k3"), to_yocto("100"));
+    root.create_user(account_from(&"k4"), to_yocto("100"));
+    root.create_user(account_from(&"k5"), to_yocto("100"));
+    root.create_user(account_from(&"k6"), to_yocto("100"));
+    root.create_user(account_from(&"k7"), to_yocto("100"));
+    root.create_user(account_from(&"k8"), to_yocto("100"));
+    root.create_user(account_from(&"k9"), to_yocto("100"));
 
     root.create_user(account_from(&"l"), to_yocto("100"));
+    root.create_user(account_from(&"l2"), to_yocto("100"));
+    root.create_user(account_from(&"l3"), to_yocto("100"));
+    root.create_user(account_from(&"l4"), to_yocto("100"));
+    root.create_user(account_from(&"l5"), to_yocto("100"));
+    root.create_user(account_from(&"l6"), to_yocto("100"));
+    root.create_user(account_from(&"l7"), to_yocto("100"));
+    root.create_user(account_from(&"l8"), to_yocto("100"));
+    root.create_user(account_from(&"l9"), to_yocto("100"));
 
     root.create_user(account_from(&"m"), to_yocto("100"));
+    root.create_user(account_from(&"m2"), to_yocto("100"));
+    root.create_user(account_from(&"m3"), to_yocto("100"));
+    root.create_user(account_from(&"m4"), to_yocto("100"));
+    root.create_user(account_from(&"m5"), to_yocto("100"));
+    root.create_user(account_from(&"m6"), to_yocto("100"));
+    root.create_user(account_from(&"m7"), to_yocto("100"));
+    root.create_user(account_from(&"m8"), to_yocto("100"));
+    root.create_user(account_from(&"m9"), to_yocto("100"));
 
     let alice = root.create_user(account_from(&"x"), to_yocto("100"));
 
@@ -176,5 +287,10 @@ pub fn account_o() -> AccountId {
 }
 
 pub fn account_from(s: &str) -> AccountId {
-    AccountId::new_unchecked(s.repeat(64).to_string())
+    if s.len()==2{
+        AccountId::new_unchecked(s.repeat(32).to_string())
+    }else {
+        AccountId::new_unchecked(s.repeat(64).to_string())
+
+    }
 }
