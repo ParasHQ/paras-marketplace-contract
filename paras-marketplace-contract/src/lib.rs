@@ -534,7 +534,7 @@ impl Contract {
             // leave function and return all FTs in ft_resolve_transfer
             if !is_promise_success() {
                 if market_data.ft_token_id == near_account() {
-                    Promise::new(buyer_id.clone()).transfer(u128::from(market_data.price));
+                    Promise::new(buyer_id.clone()).transfer(u128::from(price));
                 }
                 env::log_str(
                     &json!({
@@ -1941,58 +1941,6 @@ impl Contract {
             selected_bid.price.clone().0
         );
       }
-    }
-
-    // Market Data functions
-
-    #[payable]
-    pub fn update_market_data(
-        &mut self,
-        nft_contract_id: AccountId,
-        token_id: TokenId,
-        ft_token_id: AccountId,
-        price: U128,
-    ) {
-        assert_one_yocto();
-        let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
-        let mut market_data = self
-            .market
-            .get(&contract_and_token_id)
-            .expect("Paras: Token id does not exist ");
-
-        assert_eq!(
-            market_data.owner_id,
-            env::predecessor_account_id(),
-            "Paras: Seller only"
-        );
-
-        assert_eq!(
-            ft_token_id, market_data.ft_token_id,
-            "Paras: ft_token_id differs"
-        ); // sanity check
-
-        assert!(
-            price.0 < MAX_PRICE,
-            "Paras: price higher than {}",
-            MAX_PRICE
-        );
-
-        market_data.price = price.into();
-        self.market.insert(&contract_and_token_id, &market_data);
-
-        env::log_str(
-            &json!({
-                "type": "update_market_data",
-                "params": {
-                    "owner_id": market_data.owner_id,
-                    "nft_contract_id": nft_contract_id,
-                    "token_id": token_id,
-                    "ft_token_id": ft_token_id,
-                    "price": price,
-                }
-            })
-            .to_string(),
-        );
     }
 
     fn internal_add_market_data(
