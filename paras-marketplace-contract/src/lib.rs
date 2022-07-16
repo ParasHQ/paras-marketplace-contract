@@ -449,28 +449,6 @@ impl Contract {
 
         let mut price = market_data.price;
 
-        if market_data.is_auction.is_some() && market_data.end_price.is_some() {
-            let current_time = env::block_timestamp();
-            let end_price = market_data.end_price.unwrap();
-            let ended_at = market_data.ended_at.unwrap();
-            let started_at = market_data.started_at.unwrap();
-
-            assert!(
-                current_time >= started_at,
-                "Paras: Auction has not started yet"
-            );
-
-            if current_time > ended_at {
-                price = end_price;
-            } else {
-                let time_since_start = current_time - started_at;
-                let duration = ended_at - started_at;
-                price = price - ((price - end_price) / duration as u128) * time_since_start as u128;
-            }
-        } else if let Some(auction) = market_data.is_auction {
-            assert_eq!(auction, false, "Paras: the NFT is on auction");
-        }
-
         assert!(
             env::attached_deposit() >= price,
             "Paras: Attached deposit is less than price {}",
