@@ -437,6 +437,8 @@ impl Contract {
             "Paras: NEAR support only"
         );
 
+        assert!(market_data.is_auction.is_none(), "Paras: the NFT is on auction");
+
         if ft_token_id.is_some() {
             assert_eq!(
                 ft_token_id.unwrap().to_string(),
@@ -1644,6 +1646,8 @@ impl Contract {
             .get(&contract_and_token_id)
             .expect("Paras: Token id does not exist");
 
+        assert_eq!(market_data.is_auction.unwrap(), true, "Paras: not auction");
+
         let bidder_id = env::predecessor_account_id();
         let current_time = env::block_timestamp();
 
@@ -1832,6 +1836,8 @@ impl Contract {
             .market
             .get(&contract_and_token_id)
             .expect("Paras: Token id does not exist");
+
+        assert_eq!(market_data.is_auction.unwrap(), true, "Paras: not auction");
         let current_time: u64 = env::block_timestamp();
 
         assert!(
@@ -1887,6 +1893,7 @@ impl Contract {
           .get(&contract_and_token_id)
           .expect("Paras: Market data does not exist");
 
+      assert_eq!(market_data.is_auction.unwrap(), true, "Paras: not auction");
       assert!(
         [market_data.owner_id.clone(), self.owner_id.clone()]
           .contains(&env::predecessor_account_id()),
@@ -2615,107 +2622,6 @@ mod tests {
             None,
             None,
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "Paras: price higher than 1000000000000000000000000000000000")]
-    fn test_invalid_price_higher_than_max_price_update() {
-        let (mut context, mut contract) = setup_contract();
-
-        testing_env!(context.predecessor_account_id(accounts(0)).build());
-
-        contract.internal_add_market_data(
-            accounts(0),
-            1,
-            accounts(2),
-            "1:1".to_string(),
-            near_account(),
-            U128::from(1 * 10u128.pow(24)),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        testing_env!(context
-            .predecessor_account_id(accounts(0))
-            .attached_deposit(1)
-            .build());
-
-        contract.update_market_data(
-            accounts(2),
-            "1:1".to_string(),
-            near_account(),
-            U128::from(1_000_000_000 * 10u128.pow(24)),
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "Paras: Seller only")]
-    fn test_invalid_update_market_data() {
-        let (mut context, mut contract) = setup_contract();
-
-        testing_env!(context.predecessor_account_id(accounts(0)).build());
-
-        contract.internal_add_market_data(
-            accounts(3),
-            1,
-            accounts(2),
-            "1:1".to_string(),
-            near_account(),
-            U128::from(1 * 10u128.pow(24)),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        testing_env!(context
-            .predecessor_account_id(accounts(0))
-            .attached_deposit(1)
-            .build());
-
-        contract.update_market_data(
-            accounts(2),
-            "1:1".to_string(),
-            near_account(),
-            U128::from(2 * 10u128.pow(24)),
-        );
-    }
-
-    #[test]
-    fn test_update_market_data() {
-        let (mut context, mut contract) = setup_contract();
-
-        testing_env!(context.predecessor_account_id(accounts(0)).build());
-
-        contract.internal_add_market_data(
-            accounts(3),
-            1,
-            accounts(2),
-            "1:1".to_string(),
-            near_account(),
-            U128::from(1 * 10u128.pow(24)),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        testing_env!(context
-            .predecessor_account_id(accounts(3))
-            .attached_deposit(1)
-            .build());
-
-        contract.update_market_data(
-            accounts(2),
-            "1:1".to_string(),
-            near_account(),
-            U128::from(2 * 10u128.pow(24)),
-        );
-
-        let market = contract.get_market_data(accounts(2), "1:1".to_string());
-        assert_eq!(market.price, U128::from(2 * 10u128.pow(24)));
     }
 
     #[test]
