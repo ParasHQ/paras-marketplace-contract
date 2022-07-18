@@ -340,7 +340,7 @@ impl Contract {
         &self.transaction_fee
     }
 
-    pub fn get_market_data_transaction_fee (self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
+    pub fn get_market_data_transaction_fee (&self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         if let Some(transaction_fee) = self.market_data_transaction_fee.transaction_fee.get(&contract_and_token_id){
             return transaction_fee;
@@ -449,7 +449,7 @@ impl Contract {
             assert_eq!(price.unwrap().0, market_data.price);
         }
 
-        let mut price = market_data.price;
+        let price = market_data.price;
 
         assert!(
             env::attached_deposit() >= price,
@@ -705,10 +705,6 @@ impl Contract {
             token.clone(),
         );
 
-        if offer_data.is_some() {
-            Promise::new(buyer_id.clone()).transfer(offer_data.unwrap().price);
-        }
-
         let storage_amount = self.storage_minimum_balance().0;
         let owner_paid_storage = self.storage_deposits.get(&buyer_id).unwrap_or(0);
         let signer_storage_required =
@@ -721,6 +717,10 @@ impl Contract {
             signer_storage_required / storage_amount,
             storage_amount,
         );
+
+        if offer_data.is_some() {
+            Promise::new(buyer_id.clone()).transfer(offer_data.unwrap().price);
+        }
 
         self.internal_add_offer(
             nft_contract_id.clone().into(),
@@ -1867,7 +1867,7 @@ impl Contract {
         // refund all except selected bids
         for bid in &bids {
           // refund
-          Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+            Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
         }
         bids.clear();
 
