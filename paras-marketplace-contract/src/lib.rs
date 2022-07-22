@@ -698,6 +698,11 @@ impl Contract {
             "Paras: Only NEAR is supported"
         );
 
+        assert!(
+            self.approved_nft_contract_ids.contains(&nft_contract_id),
+            "Paras: nft_contract_id is not approved"
+        );
+
         let buyer_id = env::predecessor_account_id();
         let offer_data = self.internal_delete_offer(
             nft_contract_id.clone().into(),
