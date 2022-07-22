@@ -340,7 +340,7 @@ impl Contract {
         &self.transaction_fee
     }
 
-    pub fn get_market_data_transaction_fee (self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
+    pub fn get_market_data_transaction_fee (&self, nft_contract_id: &AccountId, token_id: &TokenId) -> u128{
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         if let Some(transaction_fee) = self.market_data_transaction_fee.transaction_fee.get(&contract_and_token_id){
             return transaction_fee;
@@ -449,7 +449,7 @@ impl Contract {
             assert_eq!(price.unwrap().0, market_data.price);
         }
 
-        let mut price = market_data.price;
+        let price = market_data.price;
 
         assert!(
             env::attached_deposit() >= price,
@@ -867,7 +867,6 @@ impl Contract {
         }
     }
 
-    #[private]
     fn internal_update_approval_id(&mut self, approval_id: &u64, nft_contract_id: &AccountId, account_id: &AccountId, token_id: &TokenId){
         let contract_account_id_token_id = make_triple(&nft_contract_id, &account_id, &token_id);
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
@@ -1692,11 +1691,6 @@ impl Contract {
 
         assert_eq!(ft_token_id.to_string(), "near", "Paras: Only support NEAR");
 
-        assert!(
-            market_data.end_price.is_none(),
-            "Paras: Dutch auction does not accept add_bid"
-        );
-
         let new_bid = Bid {
             bidder_id: bidder_id.clone(),
             price: amount.into(),
@@ -1740,7 +1734,7 @@ impl Contract {
         market_data.bids = Some(bids);
         self.market.insert(&contract_and_token_id, &market_data);
 
-        // Remove first element if bids.length > 50
+        // Remove first element if bids.length >= 100
         let updated_bids = market_data.bids.unwrap_or(Vec::new());
         if updated_bids.len() >= 100 {
           self.internal_cancel_bid(nft_contract_id.clone(), token_id.clone(), updated_bids[0].bidder_id.clone())
@@ -1825,7 +1819,7 @@ impl Contract {
         }
       }
 
-      self.internal_cancel_bid(nft_contract_id, token_id, account_id,);
+      self.internal_cancel_bid(nft_contract_id, token_id, account_id);
     }
 
     #[payable]
@@ -1852,11 +1846,6 @@ impl Contract {
             "Paras: Auction has not ended yet"
           );
         }
-
-        assert!(
-            market_data.end_price.is_none(),
-            "Paras: Dutch auction does not accept accept_bid"
-        );
 
         let mut bids = market_data.bids.unwrap();
 
@@ -1906,11 +1895,6 @@ impl Contract {
           "Paras: Auction has not ended yet (for owner)"
         );
       }
-
-      assert!(
-        market_data.end_price.is_none(),
-        "Paras: Dutch auction does not accept accept_bid"
-      );
 
       let mut bids = market_data.bids.unwrap();
 
@@ -1998,13 +1982,6 @@ impl Contract {
 
         if ended_at.is_some() {
             assert!(ended_at.unwrap().0 >= current_time);
-        }
-
-        if end_price.is_some() {
-            assert!(
-                end_price.unwrap().0 < price.0,
-                "Paras: End price is more than starting price"
-            );
         }
 
         assert!(
@@ -2278,24 +2255,7 @@ impl Contract {
 
         let market_data = market_data.expect("Paras: Market data does not exist");
 
-        let mut price = market_data.price;
-
-        if market_data.is_auction.is_some() && market_data.end_price.is_some() {
-            let current_time = env::block_timestamp();
-            let end_price = market_data.end_price.unwrap();
-            let started_at = market_data.started_at.unwrap();
-            let ended_at = market_data.ended_at.unwrap();
-
-            if current_time < started_at {
-                // Use current market_data.price
-            } else if current_time > ended_at {
-                price = end_price;
-            } else {
-                let time_since_start = current_time - started_at;
-                let duration = ended_at - started_at;
-                price = price - ((price - end_price) / duration as u128) * time_since_start as u128;
-            }
-        }
+        let price = market_data.price;
 
         let current_transaction_fee = self.get_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id);
 
@@ -2313,10 +2273,6 @@ impl Contract {
             is_auction: market_data.is_auction,
             transaction_fee: current_transaction_fee.into()
         }
-    }
-
-    pub fn approved_ft_token_ids(&self) -> Vec<AccountId> {
-        self.approved_ft_token_ids.to_vec()
     }
 
     pub fn approved_nft_contract_ids(&self) -> Vec<AccountId> {
@@ -2472,7 +2428,6 @@ mod tests {
         testing_env!(context.is_view(true).build());
         assert_eq!(contract.get_owner(), accounts(0));
         assert_eq!(contract.get_treasury(), accounts(1));
-        assert_eq!(contract.approved_ft_token_ids(), vec![near_account()]);
         assert_eq!(contract.approved_nft_contract_ids(), vec![accounts(2)]);
         assert_eq!(contract.transaction_fee.current_fee, 500);
     }
@@ -2529,20 +2484,6 @@ mod tests {
             .build());
 
         contract.transfer_ownership(accounts(5));
-    }
-
-    #[test]
-    fn test_add_approved_ft_token_ids() {
-        let (mut context, mut contract) = setup_contract();
-
-        testing_env!(context
-            .predecessor_account_id(accounts(0))
-            .attached_deposit(1)
-            .build());
-
-        contract.add_approved_ft_token_ids(vec![accounts(5)]);
-        let approved_fts = contract.approved_ft_token_ids();
-        assert_eq!(approved_fts, vec![near_account(), accounts(5)]);
     }
 
     #[test]
