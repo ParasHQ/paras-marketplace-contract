@@ -103,7 +103,526 @@ fn test_add_market_data() {
         storage_price_for_add_market
     );
 }
+#[test]
+fn test_sale_with_sucess_add_trade_storage(){
+    /*
+    1. user deposit storage
+    2. user add market sale
+    3. user deposit storage
+    4. user add trade
+    5. other user buy the nft
+     */
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
 
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": "1:1",
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+    // success add trade
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:2",
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    //buyer
+    let buyer_person = root.create_user(account_o(), to_yocto("100"));
+
+    let initial_storage_usage = marketplace.account().unwrap().storage_usage;
+
+    let outcome = buyer_person.call(
+        marketplace.account_id(),
+        "buy",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+        })
+            .to_string()
+            .into_bytes(),
+        GAS_BUY,
+        to_yocto("3"),
+    );
+
+    let restored_storage_price_for_buy =
+        initial_storage_usage - marketplace.account().unwrap().storage_usage;
+
+    println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+    println!(
+        "[BUY] Gas burnt: {} TeraGas",
+        outcome.gas_burnt().0 as f64 / 1e12
+    );
+    outcome.assert_success();
+    println!(
+        "[BUY] Restored storage price : {} Bytes",
+        restored_storage_price_for_buy
+    );
+    let expected_gas_ceiling = 50 * u64::pow(10, 12);
+    assert!(outcome.gas_burnt() < Gas(expected_gas_ceiling));
+}
+#[test]
+fn test_sale_with_fail_add_trade_storage(){
+    /*
+    1. user deposit storage
+    2. user add market sale
+    3. user doesn't deposit storage
+    4. user add trade
+    5. other user check that trade from step 4 does not exist
+    6. other user buy the nft
+     */
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": "1:1",
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    // failed add trade due cause already approved
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:2",
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    );
+
+    // no trade exist for current user
+    darmaji.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:2",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "accept_trade_paras_series",
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    );
+
+    //buyer
+    let buyer_person = root.create_user(account_o(), to_yocto("100"));
+
+    let initial_storage_usage = marketplace.account().unwrap().storage_usage;
+
+    let outcome = buyer_person.call(
+        marketplace.account_id(),
+        "buy",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+        })
+            .to_string()
+            .into_bytes(),
+        GAS_BUY,
+        to_yocto("3"),
+    );
+
+    let restored_storage_price_for_buy =
+        initial_storage_usage - marketplace.account().unwrap().storage_usage;
+
+    println!("tokens_burnt: {}Ⓝ", (outcome.tokens_burnt()) as f64 / 1e24);
+    println!(
+        "[BUY] Gas burnt: {} TeraGas",
+        outcome.gas_burnt().0 as f64 / 1e12
+    );
+    outcome.assert_success();
+    println!(
+        "[BUY] Restored storage price : {} Bytes",
+        restored_storage_price_for_buy
+    );
+    let expected_gas_ceiling = 50 * u64::pow(10, 12);
+    assert!(outcome.gas_burnt() < Gas(expected_gas_ceiling));
+}
+
+#[test]
+fn test_multiple_add_trade_with_one_failed_trade(){
+    /*
+    1. user deposit storage
+    2. user A add trade NFT 1 with NFT 2
+    3. user A doesn't deposit storage
+    4. user A add trade NFT 1 with NFT 3
+    5. other user check that trade NFT 1 with NFT 3 does not exist
+    6. user B accept trade NFT 2 with NFT 1 (from step 2)
+     */
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:2",
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    //fail add trade
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:3",
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    );
+
+    //no trade data for 1 => 3
+    darmaji.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    ).assert_success();
+
+    darmaji.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:3",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "accept_trade",
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    );
+
+    //accept trade 1 => 2
+    darmaji.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+        .assert_success();
+
+    darmaji.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:2",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "accept_trade",
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    let chandra_token: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:1"
+            })
+                .to_string()
+                .into_bytes(),
+        )
+        .unwrap_json();
+
+    let darmaji_token: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:2"
+            })
+                .to_string()
+                .into_bytes(),
+        )
+        .unwrap_json();
+
+    let darmaji_token2: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:3"
+            })
+                .to_string()
+                .into_bytes(),
+        )
+        .unwrap_json();
+    println!("1:1 Token Owner {}",chandra_token.owner_id);
+    println!("1:2 Token Owner {}",darmaji_token.owner_id);
+    println!("1:3 Token Owner {}",darmaji_token2.owner_id);
+    assert_eq!(chandra_token.owner_id, darmaji.account_id());
+    assert_eq!(darmaji_token.owner_id, chandra.account_id());
+    assert_eq!(darmaji_token2.owner_id, darmaji.account_id());
+}
+
+#[test]
+fn test_add_trade_with_fail_sale(){
+    /*
+    1. user deposit storage
+    2. user A add trade NFT 1 with NFT 2
+    3. user A doesn't deposit storage
+    4. user A add sale
+    5. other user check that sale NFT 1 does not exist
+    6. user B accept trade NFT 2 with NFT 1 (from step 2)
+     */
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:1",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "add_trade",
+                "seller_nft_contract_id": nft.account_id(),
+                "seller_token_id": "1:2",
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    ).assert_success();
+
+    //add fail sale
+    let outcome_fail_sale = chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": &json!({"market_type":"sale","price": to_yocto("3").to_string(),
+                "ft_token_id": "near"}).to_string(),
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        );
+    println!("{:?}", outcome_fail_sale.promise_errors());
+
+    //check fail sale => No Market Data
+    let check_fail_sale = darmaji.call(
+        marketplace.account_id(),
+        "buy",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+        })
+            .to_string()
+            .into_bytes(),
+        GAS_BUY,
+        to_yocto("3"),
+    );
+    println!("{:?}",check_fail_sale.promise_errors());
+
+    //accept trade 1 => 2
+    darmaji.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+        .assert_success();
+
+    let outcome = darmaji.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": "1:2",
+            "account_id": marketplace.account_id(),
+            "msg": &json!{{
+                "market_type": "accept_trade",
+                "buyer_id": chandra.account_id(),
+                "buyer_nft_contract_id": nft.account_id(),
+                "buyer_token_id": "1:1"
+            }}.to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS,
+        10u128.pow(24),
+    );
+
+    println!("{:?}", outcome.promise_errors());
+
+    let chandra_token: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:1"
+            })
+                .to_string()
+                .into_bytes(),
+        )
+        .unwrap_json();
+
+    let darmaji_token: Token = nft
+        .view(
+            nft.account_id(),
+            "nft_token",
+            &json!({
+                "token_id": "1:2"
+            })
+                .to_string()
+                .into_bytes(),
+        )
+        .unwrap_json();
+
+    println!("1:1 Token Owner {}",chandra_token.owner_id);
+    println!("1:2 Token Owner {}",darmaji_token.owner_id);
+    assert_eq!(chandra_token.owner_id, darmaji.account_id());
+    assert_eq!(darmaji_token.owner_id, chandra.account_id());
+}
 #[test]
 fn test_buy() {
     let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
@@ -299,6 +818,98 @@ fn test_accept_offer() {
 }
 
 #[test]
+fn test_accept_offer_deleted_offer_data() {
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+
+    //owner marketplace and nft-> alice
+    //seller -> chandra 
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": format!("{}:{}", "1", "1"),
+            "account_id": marketplace.account_id(),
+            "msg": msg,
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_APPROVE,
+    ).assert_success();
+
+    let market_data: MarketDataJson = chandra 
+        .view(
+            marketplace.account_id(),
+            "get_market_data",
+            &json!({
+                "nft_contract_id": nft.account_id(),
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+    let initial_approval_id = market_data.approval_id.0;
+
+    // chandra accept bid and nft_approve to marketplace but the offer data has been deleted or doesn't exists
+    // should be updated chandra's approval id
+    let msg = &json!(
+        {"market_type":"accept_offer","buyer_id": bob.account_id, "price": U128(10u128.pow(24))})
+    .to_string();
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+            .to_string()
+            .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    let market_data: MarketDataJson = chandra
+        .view(
+            marketplace.account_id(),
+            "get_market_data",
+            &json!({
+                "nft_contract_id": nft.account_id(),
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+
+    let updated_approval_id = market_data.approval_id.0;
+    println!("[ACCEPT_OFFER_DELETED_OFFER_DATA] Initial approval id:  {}", &initial_approval_id);
+    println!("[ACCEPT_OFFER_DELETED_OFFER_DATA] Updated approval id:  {}", &updated_approval_id);
+    assert_eq!(&initial_approval_id, &1);
+    assert_eq!(&updated_approval_id, &(initial_approval_id + 1));
+}
+
+#[test]
 fn test_accept_offer_paras_series() {
     let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
 
@@ -368,6 +979,98 @@ fn test_accept_offer_paras_series() {
         .unwrap_json();
 
     assert_eq!(token.owner_id, bob.account_id());
+}
+
+#[test]
+fn test_accept_offer_series_deleted_offer_data() {
+    let (marketplace, nft, _, alice, bob, chandra, darmaji, _) = init();
+
+    //owner marketplace and nft-> alice
+    //seller -> chandra 
+
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+
+    chandra.call(
+        marketplace.account_id(),
+        "storage_deposit",
+        &json!({}).to_string().into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_ADD_MARKET_DATA,
+    )
+    .assert_success();
+
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    chandra.call(
+        nft.account_id(),
+        "nft_approve",
+        &json!({
+            "token_id": format!("{}:{}", "1", "1"),
+            "account_id": marketplace.account_id(),
+            "msg": msg,
+        })
+        .to_string()
+        .into_bytes(),
+        DEFAULT_GAS,
+        STORAGE_APPROVE,
+    ).assert_success();
+
+    let market_data: MarketDataJson = chandra 
+        .view(
+            marketplace.account_id(),
+            "get_market_data",
+            &json!({
+                "nft_contract_id": nft.account_id(),
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+    let initial_approval_id = market_data.approval_id.0;
+
+    // chandra accept bid and nft_approve to marketplace but the offer data has been deleted or doesn't exists
+    // should be updated chandra's approval id
+    let msg = &json!(
+        {"market_type":"accept_offer_paras_series","buyer_id": bob.account_id, "price": U128(10u128.pow(24))})
+    .to_string();
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+            .to_string()
+            .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    let market_data: MarketDataJson = chandra
+        .view(
+            marketplace.account_id(),
+            "get_market_data",
+            &json!({
+                "nft_contract_id": nft.account_id(),
+                "token_id": "1:1"
+            })
+            .to_string()
+            .into_bytes(),
+        )
+        .unwrap_json();
+
+    let updated_approval_id = market_data.approval_id.0;
+    println!("[ACCEPT_OFFER_SERIES_DELETED_OFFER_DATA] Initial approval id:  {}", &initial_approval_id);
+    println!("[ACCEPT_OFFER_SERIES_DELETED_OFFER_DATA] Updated approval id:  {}", &updated_approval_id);
+    assert_eq!(&initial_approval_id, &1);
+    assert_eq!(&updated_approval_id, &(initial_approval_id + 1));
 }
 
 // //trade
@@ -579,7 +1282,7 @@ fn test_accept_trade_paras_series(){
         .into_bytes(),
         DEFAULT_GAS,
         10u128.pow(24),
-    ).assert_success();
+    );
 
     darmaji.call(
         marketplace.account_id(),
@@ -764,129 +1467,6 @@ fn test_add_market_data_auction_timed() {
     );
 
     assert_eq!(outcome.promise_errors().len(), 1);
-}
-
-#[test]
-fn test_add_market_data_dutch_auction() {
-    let (marketplace, nft, _, alice, bob, chandra, darmaji, root) = init();
-
-    //owner marketplace and nft-> alice
-    //seller -> bob
-    //buyer -> chandra
-    //treasury -> treasury
-    //royalty to 10 different account
-
-    const OCTOBER_1_2021: u64 = 1633046400000000000;
-    const ONE_DAY: u64 = 86400000000000;
-
-    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
-    let msg = &json!({
-        "market_type":"sale",
-        "price": to_yocto("3").to_string(),
-        "ft_token_id": "near",
-        "is_auction": true,
-        "started_at": U64(OCTOBER_1_2021),
-        "ended_at": U64(OCTOBER_1_2021 + ONE_DAY*7),
-        "end_price": to_yocto("2").to_string(),
-    })
-    .to_string();
-
-    chandra
-        .call(
-            marketplace.account_id(),
-            "storage_deposit",
-            &json!({}).to_string().into_bytes(),
-            DEFAULT_GAS,
-            STORAGE_ADD_MARKET_DATA,
-        )
-        .assert_success();
-
-    let initial_storage_usage = marketplace.account().unwrap().storage_usage;
-
-    let outcome = chandra.call(
-        nft.account_id(),
-        "nft_approve",
-        &json!({
-            "token_id": format!("{}:{}", "1", "1"),
-            "account_id": marketplace.account_id(),
-            "msg": msg,
-        })
-        .to_string()
-        .into_bytes(),
-        DEFAULT_GAS,
-        STORAGE_APPROVE,
-    );
-
-    outcome.assert_success();
-    let storage_price_for_add_market = (marketplace.account().unwrap().storage_usage
-        - initial_storage_usage) as u128
-        * 10u128.pow(19);
-    //println!("{:?}", outcome.promise_results());
-    println!(
-        "[ADD MARKET DATA DUTCH AUCTION] Gas burnt: {} TeraGas",
-        outcome.gas_burnt().0 as f64 / 1e12
-    );
-    println!(
-        "[ADD MARKET DATA DUTCH AUCTION] Storage price : {} yoctoNEAR",
-        storage_price_for_add_market
-    );
-
-    alice.borrow_runtime_mut().cur_block.block_timestamp = OCTOBER_1_2021 + ONE_DAY * 1;
-
-    let market_data: MarketDataJson = alice
-        .view(
-            marketplace.account_id(),
-            "get_market_data",
-            &json!({
-                "nft_contract_id": nft.account_id(),
-                "token_id": "1:1"
-            })
-            .to_string()
-            .into_bytes(),
-        )
-        .unwrap_json();
-
-    println!(
-        "[DUTCH AUCTION] Price after one day: {}",
-        market_data.price.0
-    );
-
-    alice.borrow_runtime_mut().cur_block.block_timestamp = OCTOBER_1_2021 + ONE_DAY * 2;
-
-    let market_data: MarketDataJson = alice
-        .view(
-            marketplace.account_id(),
-            "get_market_data",
-            &json!({
-                "nft_contract_id": nft.account_id(),
-                "token_id": "1:1"
-            })
-            .to_string()
-            .into_bytes(),
-        )
-        .unwrap_json();
-
-    println!(
-        "[DUTCH AUCTION] Price after two day: {}",
-        market_data.price.0
-    );
-
-    //buyer
-    let buyer_person = root.create_user(account_o(), to_yocto("100"));
-    let outcome = buyer_person.call(
-        marketplace.account_id(),
-        "buy",
-        &json!({
-            "nft_contract_id": nft.account_id(),
-            "token_id": format!("{}:{}", "1", "1"),
-        })
-        .to_string()
-        .into_bytes(),
-        GAS_BUY,
-        market_data.price.0,
-    );
-
-    outcome.assert_success();
 }
 
 #[test]
