@@ -476,7 +476,7 @@ impl Contract {
             token_id,
             Some(market_data.approval_id),
             Some(price.into()),
-            Some(10u32), // max length payout
+            Some(50u32), // max length payout
             nft_contract_id,
             1,
             GAS_FOR_NFT_TRANSFER,
@@ -926,7 +926,7 @@ impl Contract {
                 token_id.clone(),
                 Some(approval_id),
                 Some(U128::from(offer_data.price)),
-                Some(10u32), // max length payout
+                Some(50u32), // max length payout
                 nft_contract_id,
                 1,
                 GAS_FOR_NFT_TRANSFER,
@@ -987,7 +987,7 @@ impl Contract {
                 token_id.clone(),
                 Some(approval_id),
                 Some(U128::from(offer_data.price)),
-                Some(10u32), // max length payout
+                Some(50u32), // max length payout
                 nft_contract_id,
                 1,
                 GAS_FOR_NFT_TRANSFER,
