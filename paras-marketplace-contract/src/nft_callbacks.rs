@@ -162,12 +162,6 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 price.unwrap().0,
             );
         } else if market_type == "add_trade" {
-            // old market data
-            let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
-            if let Some(mut market_data) = self.market.get(&contract_and_token_id) {
-                market_data.approval_id = approval_id;
-                self.market.insert(&contract_and_token_id, &market_data);
-            }
 
             let storage_amount = self.storage_minimum_balance().0;
             let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
