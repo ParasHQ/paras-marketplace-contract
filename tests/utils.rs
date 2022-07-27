@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::time::SystemTime;
 use near_sdk::{serde_json::json, AccountId};
 use near_sdk_sim::{
     deploy, init_simulator, to_yocto, ContractAccount, UserAccount, STORAGE_AMOUNT,
 };
 use near_sdk_sim::lazy_static_include::syn::export::str;
+use near_sdk_sim::runtime::GenesisConfig;
+use near_sdk_sim::version::MIN_GAS_PRICE_NEP_92;
 use paras_marketplace_contract::ContractContract as MarketplaceContract;
 
 near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
@@ -168,7 +171,15 @@ pub fn init() -> (
     UserAccount,
     UserAccount,
 ) {
-    let root = init_simulator(None);
+    let start_now = SystemTime::now();
+    let mut started_at: u64 = 0;
+    match start_now.duration_since(SystemTime::UNIX_EPOCH)  {
+        Ok(n)=> started_at = n.as_nanos() as u64,
+        Err(e)=> started_at = 0
+    }
+    let mut genesis = GenesisConfig::default();
+    genesis.genesis_time = started_at;
+    let root = init_simulator(Some(genesis));
 
     let treasury = root.create_user(
         AccountId::new_unchecked("treasury".to_string()),
@@ -253,7 +264,6 @@ pub fn init() -> (
     let chandra = root.create_user(account_from(&"z"), to_yocto("100"));
 
     let darmaji = root.create_user(account_from(&"n"), to_yocto("100"));
-
     let nft_account_id = AccountId::new_unchecked(NFT_ID_STR.to_string());
     let nft_contract = root.deploy(&NFT_WASM_BYTES, nft_account_id.clone(), STORAGE_AMOUNT);
 
