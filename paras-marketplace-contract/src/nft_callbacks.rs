@@ -80,17 +80,23 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
             buyer_token_id
         } = near_sdk::serde_json::from_str(&msg).expect("Not valid MarketArgs");
 
+        // replace old approval id on trade
+        let buyer_contract_account_id_token_id = make_triple(&nft_contract_id,
+                                                             &owner_id,
+                                                             &token_id);
+        if let Some(mut old_trade) = self.trades.get(&buyer_contract_account_id_token_id){
+            old_trade.approval_id = approval_id;
+            self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
+        }
+        // replace old approval on market
+        let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
+        if let Some(mut old_market) = self.market.get(&contract_and_token_id){
+            old_market.approval_id = approval_id;
+            self.market.insert(&contract_and_token_id,&old_market);
+        }
+
         if market_type == "sale" {
             assert!(price.is_some(), "Paras: price not specified");
-
-            // //replace old data approval id
-            let buyer_contract_account_id_token_id = make_triple(&nft_contract_id,
-                            &owner_id,
-                            &token_id);
-            if let Some(mut old_trade) = self.trades.get(&buyer_contract_account_id_token_id){
-                old_trade.approval_id = approval_id;
-                self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
-            }
 
             let storage_amount = self.storage_minimum_balance().0;
             let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);
@@ -156,20 +162,6 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 price.unwrap().0,
             );
         } else if market_type == "add_trade" {
-            // old market data
-            let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
-            if let Some(mut market_data) = self.market.get(&contract_and_token_id) {
-                market_data.approval_id = approval_id;
-                self.market.insert(&contract_and_token_id, &market_data);
-            }
-            // //replace old data approval id
-            let buyer_contract_account_id_token_id = make_triple(&nft_contract_id,
-                            &owner_id,
-                            &token_id);
-            if let Some(mut old_trade) = self.trades.get(&buyer_contract_account_id_token_id){
-                old_trade.approval_id = approval_id;
-                self.trades.insert(&buyer_contract_account_id_token_id,&old_trade);
-            }
 
             let storage_amount = self.storage_minimum_balance().0;
             let owner_paid_storage = self.storage_deposits.get(&signer_id).unwrap_or(0);

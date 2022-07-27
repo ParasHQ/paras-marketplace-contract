@@ -253,7 +253,6 @@ pub fn init() -> (
     let chandra = root.create_user(account_from(&"z"), to_yocto("100"));
 
     let darmaji = root.create_user(account_from(&"n"), to_yocto("100"));
-
     let nft_account_id = AccountId::new_unchecked(NFT_ID_STR.to_string());
     let nft_contract = root.deploy(&NFT_WASM_BYTES, nft_account_id.clone(), STORAGE_AMOUNT);
 
