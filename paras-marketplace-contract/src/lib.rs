@@ -59,6 +59,10 @@ fn near_account() -> AccountId {
     AccountId::new_unchecked("near".to_string())
 }
 
+fn end_auction_account() -> AccountId {
+  AccountId::new_unchecked("runner0.paras.near".to_string())
+}
+
 const DELIMETER: &str = "||";
 const NEAR: &str = "near";
 
@@ -1910,7 +1914,7 @@ impl Contract {
           .expect("Paras: Market data does not exist");
 
       assert!(
-        [market_data.owner_id.clone(), self.owner_id.clone()]
+        [market_data.owner_id.clone(), self.owner_id.clone(), end_auction_account()]
           .contains(&env::predecessor_account_id()),
         "Paras: Seller or owner only"
       );
