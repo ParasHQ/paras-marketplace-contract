@@ -59,8 +59,28 @@ fn near_account() -> AccountId {
     AccountId::new_unchecked("near".to_string())
 }
 
-fn end_auction_account() -> AccountId {
+fn runner_zero() -> AccountId {
   AccountId::new_unchecked("runner0.paras.near".to_string())
+}
+
+fn runner_one() -> AccountId {
+  AccountId::new_unchecked("runner1.paras.near".to_string())
+}
+
+fn runner_two() -> AccountId {
+  AccountId::new_unchecked("runner2.paras.near".to_string())
+}
+
+fn runner_three() -> AccountId {
+  AccountId::new_unchecked("runner3.paras.near".to_string())
+}
+
+fn runner_four() -> AccountId {
+  AccountId::new_unchecked("runner4.paras.near".to_string())
+}
+
+fn runner_five() -> AccountId {
+  AccountId::new_unchecked("runner5.paras.near".to_string())
 }
 
 const DELIMETER: &str = "||";
@@ -1914,7 +1934,7 @@ impl Contract {
           .expect("Paras: Market data does not exist");
 
       assert!(
-        [market_data.owner_id.clone(), self.owner_id.clone(), end_auction_account()]
+        [market_data.owner_id.clone(), self.owner_id.clone(), runner_zero(), runner_one(), runner_two(), runner_three(), runner_four(), runner_five()]
           .contains(&env::predecessor_account_id()),
         "Paras: Seller or owner only"
       );
