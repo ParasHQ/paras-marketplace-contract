@@ -10,6 +10,7 @@ use near_sdk::{is_promise_success, promise_result_as_success, PromiseOrValue};
 use std::collections::HashMap;
 
 use crate::external::*;
+use near_sdk::env::predecessor_account_id;
 
 mod external;
 mod nft_callbacks;
@@ -360,14 +361,12 @@ impl Contract {
     // Approved contracts
     #[payable]
     pub fn add_approved_nft_contract_ids(&mut self, nft_contract_ids: Vec<AccountId>) {
-        assert_one_yocto();
         self.assert_owner();
         add_accounts(Some(nft_contract_ids), &mut self.approved_nft_contract_ids);
     }
 
     #[payable]
     pub fn remove_approved_nft_contract_ids(&mut self, nft_contract_ids: Vec<AccountId>) {
-        assert_one_yocto();
         self.assert_owner();
         remove_accounts(Some(nft_contract_ids), &mut self.approved_nft_contract_ids);
     }
@@ -375,14 +374,12 @@ impl Contract {
     // Approved paras contracts
     #[payable]
     pub fn add_approved_paras_nft_contract_ids(&mut self, nft_contract_ids: Vec<AccountId>) {
-        assert_one_yocto();
         self.assert_owner();
         add_accounts(Some(nft_contract_ids), &mut self.paras_nft_contracts);
     }
 
     #[payable]
     pub fn add_approved_ft_token_ids(&mut self, ft_token_ids: Vec<AccountId>) {
-        assert_one_yocto();
         self.assert_owner();
         add_accounts(Some(ft_token_ids), &mut self.approved_ft_token_ids);
     }
@@ -1829,7 +1826,10 @@ impl Contract {
 
     #[payable]
     pub fn accept_bid(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
-        assert_one_yocto();
+        let predecessor_account_id = predecessor_account_id();
+        if predecessor_account_id != self.owner_id {
+            assert_one_yocto();
+        }
         let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, token_id);
         let mut market_data = self
             .market
@@ -1840,12 +1840,12 @@ impl Contract {
         let current_time: u64 = env::block_timestamp();
 
         assert!(
-          [market_data.owner_id.clone(), self.owner_id.clone()]
-            .contains(&env::predecessor_account_id()),
+            [market_data.owner_id.clone(), self.owner_id.clone()]
+            .contains(&predecessor_account_id),
             "Paras: Seller or owner only"
         );
 
-        if env::predecessor_account_id() == self.owner_id && market_data.ended_at.is_some() {
+        if predecessor_account_id == self.owner_id && market_data.ended_at.is_some() {
           assert!(
             current_time >= market_data.ended_at.unwrap(),
             "Paras: Auction has not ended yet"
@@ -1878,7 +1878,10 @@ impl Contract {
 
     #[payable]
     pub fn end_auction(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
-      assert_one_yocto();
+      let predecessor_account_id = env::predecessor_account_id();
+      if predecessor_account_id != self.owner_id {
+          assert_one_yocto();
+      }
 
       let current_time = env::block_timestamp();
       let contract_and_token_id = format!("{}{}{}", &nft_contract_id, DELIMETER, &token_id);
@@ -1890,11 +1893,11 @@ impl Contract {
       assert_eq!(market_data.is_auction.unwrap(), true, "Paras: not auction");
       assert!(
         [market_data.owner_id.clone(), self.owner_id.clone()]
-          .contains(&env::predecessor_account_id()),
+          .contains(&predecessor_account_id),
         "Paras: Seller or owner only"
       );
 
-      if env::predecessor_account_id() == self.owner_id && market_data.ended_at.is_some() {
+      if predecessor_account_id == self.owner_id && market_data.ended_at.is_some() {
         assert!(
           current_time >= market_data.ended_at.unwrap(),
           "Paras: Auction has not ended yet (for owner)"
@@ -2130,7 +2133,11 @@ impl Contract {
 
     #[payable]
     pub fn delete_market_data(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
-        assert_one_yocto();
+        let predecessor_account_id = env::predecessor_account_id();
+        if predecessor_account_id != self.owner_id {
+            assert_one_yocto();
+        }
+
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         let current_time: u64 = env::block_timestamp();
 
@@ -2161,11 +2168,11 @@ impl Contract {
 
         assert!(
             [market_data.owner_id.clone(), self.owner_id.clone()]
-                .contains(&env::predecessor_account_id()),
+                .contains(&predecessor_account_id),
             "Paras: Seller or owner only"
         );
 
-        if market_data.is_auction.is_some() && env::predecessor_account_id() == self.owner_id {
+        if market_data.is_auction.is_some() && predecessor_account_id == self.owner_id {
           assert!(
             current_time >= market_data.ended_at.unwrap(),
             "Paras: Auction has not ended yet"
@@ -2233,7 +2240,7 @@ impl Contract {
 
     // View
 
-    pub fn get_market_data(self, nft_contract_id: AccountId, token_id: TokenId) -> MarketDataJson {
+    pub fn get_market_data(&self, nft_contract_id: AccountId, token_id: TokenId) -> MarketDataJson {
         let contract_and_token_id = format!("{}{}{}", nft_contract_id, DELIMETER, token_id);
         let market_data: Option<MarketData> =
             if let Some(market_data) = self.old_market.get(&contract_and_token_id) {
