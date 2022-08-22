@@ -10,7 +10,6 @@ use near_sdk::{is_promise_success, promise_result_as_success, PromiseOrValue};
 use std::collections::HashMap;
 
 use crate::external::*;
-use near_sdk::env::predecessor_account_id;
 
 mod external;
 mod nft_callbacks;
@@ -1826,7 +1825,7 @@ impl Contract {
 
     #[payable]
     pub fn accept_bid(&mut self, nft_contract_id: AccountId, token_id: TokenId) {
-        let predecessor_account_id = predecessor_account_id();
+        let predecessor_account_id = env::predecessor_account_id();
         if predecessor_account_id != self.owner_id {
             assert_one_yocto();
         }
