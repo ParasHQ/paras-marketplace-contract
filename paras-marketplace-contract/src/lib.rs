@@ -1979,11 +1979,12 @@ impl Contract {
                     started_at = Some(U64(current_time));
                 }
 
+                assert!(ended_at.is_some(), "Paras: Ended at is none");
+
                 if let Some(ended_at) = ended_at {
                   assert!(ended_at.0 >= current_time);
                 }
             }
-
         }
 
         assert!(
