@@ -433,7 +433,7 @@ impl Contract {
             "Paras: NEAR support only"
         );
 
-        assert!(market_data.is_auction.is_none(), "Paras: the NFT is on auction");
+        assert_eq!(market_data.is_auction.unwrap(), false, "Paras: the NFT is on auction");
 
         if ft_token_id.is_some() {
             assert_eq!(
