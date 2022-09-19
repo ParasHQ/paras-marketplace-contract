@@ -1965,27 +1965,25 @@ impl Contract {
 
         let current_time: u64 = env::block_timestamp();
 
-        if started_at.is_some() {
-            assert!(started_at.unwrap().0 >= current_time);
-
-            if ended_at.is_some() {
-                assert!(started_at.unwrap().0 < ended_at.unwrap().0);
-            }
-        }
-
         if let Some(is_auction) = is_auction {
+            if started_at.is_some() {
+                assert!(started_at.unwrap().0 >= current_time);
+
+                if ended_at.is_some() {
+                    assert!(started_at.unwrap().0 < ended_at.unwrap().0);
+                }
+            }
+
             if is_auction == true {
                 if started_at.is_none() {
                     started_at = Some(U64(current_time));
                 }
 
-                assert!(ended_at.is_some(), "Paras: Ended at is none")
+                if let Some(ended_at) = ended_at {
+                  assert!(ended_at.0 >= current_time);
+                }
             }
 
-        }
-
-        if ended_at.is_some() {
-            assert!(ended_at.unwrap().0 >= current_time);
         }
 
         assert!(
