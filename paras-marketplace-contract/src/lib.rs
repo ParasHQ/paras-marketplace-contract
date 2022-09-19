@@ -1982,9 +1982,10 @@ impl Contract {
                 if started_at.is_none() {
                     started_at = Some(U64(current_time));
                 }
+
+                assert!(ended_at.is_some(), "Paras: Ended at is none")
             }
 
-            assert!(ended_at.is_some(), "Paras: Ended at is none")
         }
 
         if ended_at.is_some() {
