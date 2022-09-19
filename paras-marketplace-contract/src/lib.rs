@@ -1288,11 +1288,9 @@ impl Contract {
         }
 
         self.internal_delete_trade(
-            nft_contract_id.clone().into(),
             buyer_id.clone(),
-            token.clone(),
-            buyer_nft_contract_id.clone(),
-            buyer_token_id.clone(),
+            buyer_contract_account_id_token_id,
+            contract_account_id_token_id
         )
         .expect("Paras: Trade not found");
 
@@ -1314,47 +1312,34 @@ impl Contract {
 
     fn internal_delete_trade(
         &mut self,
-        nft_contract_id: AccountId,
         buyer_id: AccountId,
-        token_id: TokenId,
-        buyer_nft_contract_id: AccountId,
-        buyer_token_id: TokenId,
+        buyer_contract_account_id_token_id: String,
+        contract_account_id_token_id: String,
     ) -> Option<TradeData> {
-        let buyer_contract_account_id_token_id =
-            make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
-        let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
-
         let mut trade_list = self
             .trades
             .get(&buyer_contract_account_id_token_id)
             .expect("Paras: Trade list does not exist");
 
-        let trade_data = trade_list.trade_data.remove(&contract_account_id_token_id);
+        let trade_data = trade_list.trade_data.remove(&contract_account_id_token_id).unwrap();
 
         self.trades
             .insert(&buyer_contract_account_id_token_id, &trade_list);
 
-        match trade_data {
-            Some(trade) => {
-                let mut by_owner_id = self
-                    .by_owner_id
-                    .get(&buyer_id)
-                    .expect("Paras: no market data by account_id");
-                by_owner_id.remove(&make_key_owner_by_id_trade(contract_account_id_token_id));
-                if by_owner_id.is_empty() {
-                    self.by_owner_id.remove(&buyer_id);
-                } else {
-                    self.by_owner_id.insert(&buyer_id, &by_owner_id);
-                }
-                return Some(trade);
-            }
-            None => {
-                self.trades
-                    .remove(&buyer_contract_account_id_token_id)
-                    .expect("Paras: Error delete trade list");
-                return None;
-            }
-        };
+        let mut by_owner_id = self
+            .by_owner_id
+            .get(&buyer_id)
+            .expect("Paras: no market data by account_id");
+
+        by_owner_id.remove(&make_key_owner_by_id_trade(contract_account_id_token_id));
+
+        if by_owner_id.is_empty() {
+            self.by_owner_id.remove(&buyer_id);
+        } else {
+            self.by_owner_id.insert(&buyer_id, &by_owner_id);
+        }
+
+        return Some(trade_data);
     }
 
     pub fn get_trade(
