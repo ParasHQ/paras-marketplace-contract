@@ -448,8 +448,8 @@ impl Contract {
         let price = market_data.price;
 
         assert!(
-            env::attached_deposit() >= price,
-            "Paras: Attached deposit is less than price {}",
+            env::attached_deposit() == price,
+            "Paras: The attached deposit should be exactly the price {}",
             price
         );
 
