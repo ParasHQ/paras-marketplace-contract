@@ -1651,19 +1651,15 @@ impl Contract {
         let bidder_id = env::predecessor_account_id();
         let current_time = env::block_timestamp();
 
-        if market_data.started_at.is_some() {
-            assert!(
-                current_time >= market_data.started_at.unwrap(),
-                "Paras: Sale has not started yet"
-            );
-        }
+        assert!(
+            current_time >= market_data.started_at.unwrap(),
+            "Paras: Sale has not started yet"
+        );
 
-        if market_data.ended_at.is_some() {
-            assert!(
-                current_time <= market_data.ended_at.unwrap(),
-                "Paras: Sale has ended"
-            );
-        }
+        assert!(
+            current_time <= market_data.ended_at.unwrap(),
+            "Paras: Sale has ended"
+        );
 
         let remaining_time = market_data.ended_at.unwrap() - current_time;
         if remaining_time <= FIVE_MINUTES {
