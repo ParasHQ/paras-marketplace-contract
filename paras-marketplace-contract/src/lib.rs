@@ -448,9 +448,9 @@ impl Contract {
 
         let price = market_data.price;
 
-        assert!(
-            env::attached_deposit() >= price,
-            "Paras: Attached deposit is less than price {}",
+        assert_eq!(
+            env::attached_deposit(), price,
+            "Paras: The attached deposit should be exactly the price {}",
             price
         );
 
@@ -585,7 +585,12 @@ impl Contract {
 
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
-                    Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
+
+                    let amount = amount.0 - treasury_fee;
+                    if amount > 0{
+                        Promise::new(receiver_id).transfer(amount);
+                    }
+
                     if treasury_fee != 0 {
                         Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
                     }
@@ -707,10 +712,13 @@ impl Contract {
             token.clone(),
         );
 
-        if offer_data.is_some() {
-            Promise::new(buyer_id.clone()).transfer(offer_data.unwrap().price);
+        if let Some(offer) = offer_data{
+            if env::account_balance() < offer.price {
+                env::panic_str(&"Paras: Not enough balance to refund offer");
+            }
+            Promise::new(buyer_id.clone()).transfer(offer.price);
         }
-
+  
         let storage_amount = self.storage_minimum_balance().0;
         let owner_paid_storage = self.storage_deposits.get(&buyer_id).unwrap_or(0);
         let signer_storage_required =
@@ -817,6 +825,9 @@ impl Contract {
         )
         .expect("Paras: Offer not found");
 
+        if env::account_balance() < offer_data.price {
+            env::panic_str(&"Paras: Not enough balance to refund offer");
+        }
         Promise::new(offer_data.buyer_id).transfer(offer_data.price);
 
         env::log_str(
@@ -1278,11 +1289,9 @@ impl Contract {
         }
 
         self.internal_delete_trade(
-            nft_contract_id.clone().into(),
             buyer_id.clone(),
-            token.clone(),
-            buyer_nft_contract_id.clone(),
-            buyer_token_id.clone(),
+            buyer_contract_account_id_token_id,
+            contract_account_id_token_id
         )
         .expect("Paras: Trade not found");
 
@@ -1304,47 +1313,34 @@ impl Contract {
 
     fn internal_delete_trade(
         &mut self,
-        nft_contract_id: AccountId,
         buyer_id: AccountId,
-        token_id: TokenId,
-        buyer_nft_contract_id: AccountId,
-        buyer_token_id: TokenId,
+        buyer_contract_account_id_token_id: String,
+        contract_account_id_token_id: String,
     ) -> Option<TradeData> {
-        let buyer_contract_account_id_token_id =
-            make_triple(&buyer_nft_contract_id, &buyer_id, &buyer_token_id);
-        let contract_account_id_token_id = make_triple(&nft_contract_id, &buyer_id, &token_id);
-
         let mut trade_list = self
             .trades
             .get(&buyer_contract_account_id_token_id)
             .expect("Paras: Trade list does not exist");
 
-        let trade_data = trade_list.trade_data.remove(&contract_account_id_token_id);
+        let trade_data = trade_list.trade_data.remove(&contract_account_id_token_id).unwrap();
 
         self.trades
             .insert(&buyer_contract_account_id_token_id, &trade_list);
 
-        match trade_data {
-            Some(trade) => {
-                let mut by_owner_id = self
-                    .by_owner_id
-                    .get(&buyer_id)
-                    .expect("Paras: no market data by account_id");
-                by_owner_id.remove(&make_key_owner_by_id_trade(contract_account_id_token_id));
-                if by_owner_id.is_empty() {
-                    self.by_owner_id.remove(&buyer_id);
-                } else {
-                    self.by_owner_id.insert(&buyer_id, &by_owner_id);
-                }
-                return Some(trade);
-            }
-            None => {
-                self.trades
-                    .remove(&buyer_contract_account_id_token_id)
-                    .expect("Paras: Error delete trade list");
-                return None;
-            }
-        };
+        let mut by_owner_id = self
+            .by_owner_id
+            .get(&buyer_id)
+            .expect("Paras: no market data by account_id");
+
+        by_owner_id.remove(&make_key_owner_by_id_trade(contract_account_id_token_id));
+
+        if by_owner_id.is_empty() {
+            self.by_owner_id.remove(&buyer_id);
+        } else {
+            self.by_owner_id.insert(&buyer_id, &by_owner_id);
+        }
+
+        return Some(trade_data);
     }
 
     pub fn get_trade(
@@ -1512,6 +1508,7 @@ impl Contract {
             env::current_account_id(),
             buyer_token_id.clone(),
             Some(buyer_approval_id),
+            None,
             buyer_nft_contract_id.clone(),
             1,
             GAS_FOR_NFT_TRANSFER,
@@ -1551,6 +1548,7 @@ impl Contract {
                 env::current_account_id(),
                 seller_token_id.clone(),
                 Some(seller_approval_id),
+                None,
                 seller_nft_contract_id.clone(),
                 1,
                 GAS_FOR_NFT_TRANSFER,
@@ -1572,6 +1570,7 @@ impl Contract {
             ext_contract::nft_transfer(
                 buyer_id,
                 buyer_token_id,
+                None,
                 None,
                 buyer_nft_contract_id,
                 1,
@@ -1603,6 +1602,7 @@ impl Contract {
             seller_id.clone(),
             buyer_token_id.clone(),
             None,
+            None,
             buyer_nft_contract_id.clone(),
             1,
             GAS_FOR_NFT_TRANSFER,
@@ -1610,6 +1610,7 @@ impl Contract {
         .then(ext_contract::nft_transfer(
             buyer_id.clone(),
             seller_token_id.clone(),
+            None,
             None,
             seller_nft_contract_id.clone(),
             1,
@@ -1700,9 +1701,9 @@ impl Contract {
             let current_bid = &bids[bids.len() - 1];
 
             assert!(
-              amount.0 >= current_bid.price.0 + (current_bid.price.0 / 100 * 5),
+              amount.0 >= current_bid.price.0 + (current_bid.price.0 * 5 / 100),
               "Paras: Can't pay less than or equal to current bid price + 5% : {:?}",
-              current_bid.price.0 + (current_bid.price.0 / 100 * 5)
+              current_bid.price.0 + (current_bid.price.0 * 5 / 100)
             );
 
             assert!(
