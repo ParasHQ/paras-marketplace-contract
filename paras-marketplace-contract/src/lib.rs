@@ -713,7 +713,7 @@ impl Contract {
 
         if let Some(offer) = offer_data{
             if env::account_balance() < offer.price {
-                near_sdk::env::panic_str(&"Paras: Not enough balance to refund offer");
+                env::panic_str(&"Paras: Not enough balance to refund offer");
             }
             Promise::new(buyer_id.clone()).transfer(offer.price);
         }
@@ -825,7 +825,7 @@ impl Contract {
         .expect("Paras: Offer not found");
 
         if env::account_balance() < offer_data.price {
-            near_sdk::env::panic_str(&"Paras: Not enough balance to refund offer");
+            env::panic_str(&"Paras: Not enough balance to refund offer");
         }
         Promise::new(offer_data.buyer_id).transfer(offer_data.price);
 
