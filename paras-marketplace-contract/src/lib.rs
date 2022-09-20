@@ -420,6 +420,7 @@ impl Contract {
         let market_data: MarketData = market_data.expect("Paras: Market data does not exist");
 
         let buyer_id = env::predecessor_account_id();
+        let is_auction = market_data.is_auction.unwrap_or(false);
 
         assert_ne!(
             buyer_id, market_data.owner_id,
@@ -433,7 +434,7 @@ impl Contract {
             "Paras: NEAR support only"
         );
 
-        assert_eq!(market_data.is_auction.unwrap(), false, "Paras: the NFT is on auction");
+        assert_eq!(is_auction, false, "Paras: the NFT is on auction");
 
         if ft_token_id.is_some() {
             assert_eq!(
@@ -1966,13 +1967,13 @@ impl Contract {
         let current_time: u64 = env::block_timestamp();
 
         if let Some(is_auction) = is_auction {
-            if started_at.is_some() {
-                assert!(started_at.unwrap().0 >= current_time);
+          if let Some(started_at) = started_at {
+              assert!(started_at.0 >= current_time);
 
-                if ended_at.is_some() {
-                    assert!(started_at.unwrap().0 < ended_at.unwrap().0);
-                }
-            }
+              if let Some(ended_at) = ended_at {
+                assert!(started_at.0 < ended_at.0);
+              }
+          }
 
             if is_auction == true {
                 if started_at.is_none() {
