@@ -447,8 +447,8 @@ impl Contract {
 
         let price = market_data.price;
 
-        assert!(
-            env::attached_deposit() == price,
+        assert_eq!(
+            env::attached_deposit(), price,
             "Paras: The attached deposit should be exactly the price {}",
             price
         );
