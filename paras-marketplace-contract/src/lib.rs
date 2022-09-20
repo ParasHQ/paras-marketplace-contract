@@ -420,6 +420,7 @@ impl Contract {
         let market_data: MarketData = market_data.expect("Paras: Market data does not exist");
 
         let buyer_id = env::predecessor_account_id();
+        let is_auction = market_data.is_auction.unwrap_or(false);
 
         assert_ne!(
             buyer_id, market_data.owner_id,
@@ -433,7 +434,7 @@ impl Contract {
             "Paras: NEAR support only"
         );
 
-        assert!(market_data.is_auction.is_none(), "Paras: the NFT is on auction");
+        assert_eq!(is_auction, false, "Paras: the NFT is on auction");
 
         if ft_token_id.is_some() {
             assert_eq!(
@@ -1651,19 +1652,15 @@ impl Contract {
         let bidder_id = env::predecessor_account_id();
         let current_time = env::block_timestamp();
 
-        if market_data.started_at.is_some() {
-            assert!(
-                current_time >= market_data.started_at.unwrap(),
-                "Paras: Sale has not started yet"
-            );
-        }
+        assert!(
+            current_time >= market_data.started_at.unwrap(),
+            "Paras: Sale has not started yet"
+        );
 
-        if market_data.ended_at.is_some() {
-            assert!(
-                current_time <= market_data.ended_at.unwrap(),
-                "Paras: Sale has ended"
-            );
-        }
+        assert!(
+            current_time <= market_data.ended_at.unwrap(),
+            "Paras: Sale has ended"
+        );
 
         let remaining_time = market_data.ended_at.unwrap() - current_time;
         if remaining_time <= FIVE_MINUTES {
@@ -1969,26 +1966,26 @@ impl Contract {
 
         let current_time: u64 = env::block_timestamp();
 
-        if started_at.is_some() {
-            assert!(started_at.unwrap().0 >= current_time);
-
-            if ended_at.is_some() {
-                assert!(started_at.unwrap().0 < ended_at.unwrap().0);
-            }
-        }
-
         if let Some(is_auction) = is_auction {
+          if let Some(started_at) = started_at {
+              assert!(started_at.0 >= current_time);
+
+              if let Some(ended_at) = ended_at {
+                assert!(started_at.0 < ended_at.0);
+              }
+          }
+
             if is_auction == true {
                 if started_at.is_none() {
                     started_at = Some(U64(current_time));
                 }
+
+                assert!(ended_at.is_some(), "Paras: Ended at is none");
+
+                if let Some(ended_at) = ended_at {
+                  assert!(ended_at.0 >= current_time);
+                }
             }
-
-            assert!(ended_at.is_some(), "Paras: Ended at is none")
-        }
-
-        if ended_at.is_some() {
-            assert!(ended_at.unwrap().0 >= current_time);
         }
 
         assert!(
