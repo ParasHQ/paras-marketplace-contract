@@ -711,13 +711,13 @@ impl Contract {
             token.clone(),
         );
 
-        if offer_data.is_some() {
-            if env::account_balance() < offer_data.as_ref().unwrap().price {
+        if let Some(offer) = offer_data{
+            if env::account_balance() < offer.price {
                 near_sdk::env::panic_str(&"Paras: Not enough balance to refund offer");
             }
-            Promise::new(buyer_id.clone()).transfer(offer_data.unwrap().price);
+            Promise::new(buyer_id.clone()).transfer(offer.price);
         }
-
+  
         let storage_amount = self.storage_minimum_balance().0;
         let owner_paid_storage = self.storage_deposits.get(&buyer_id).unwrap_or(0);
         let signer_storage_required =
