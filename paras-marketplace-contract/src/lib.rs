@@ -532,7 +532,7 @@ impl Contract {
             // leave function and return all FTs in ft_resolve_transfer
             if !is_promise_success() {
                 if market_data.ft_token_id == near_account() {
-                    Promise::new(buyer_id.clone()).transfer(u128::from(price));
+                    self.internal_transfer_near(buyer_id.clone(), u128::from(price))
                 }
                 env::log_str(
                     &json!({
@@ -552,9 +552,9 @@ impl Contract {
                 let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
                 let contract_and_token_id = format!("{}{}{}", &market_data.nft_contract_id, DELIMETER, &market_data.token_id);
                 self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
-                Promise::new(market_data.owner_id.clone()).transfer(price.0 - treasury_fee);
+                self.internal_transfer_near(market_data.owner_id.clone(), price.0 - treasury_fee);
                 if treasury_fee > 0 {
-                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    self.internal_transfer_near(self.treasury_id.clone(), treasury_fee);
                 }
 
                 env::log_str(
@@ -587,14 +587,14 @@ impl Contract {
 
                     let amount = amount.0.saturating_sub(treasury_fee);
                     if amount > 0{
-                        Promise::new(receiver_id).transfer(amount);
+                        self.internal_transfer_near(receiver_id, amount);
                     }
 
                     if treasury_fee != 0 {
-                        Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                        self.internal_transfer_near(self.treasury_id.clone(), treasury_fee);
                     }
                 } else {
-                    Promise::new(receiver_id).transfer(amount.0);
+                    self.internal_transfer_near(receiver_id, amount.0);
                 }
             }
             env::log_str(
@@ -712,10 +712,8 @@ impl Contract {
         );
 
         if let Some(offer) = offer_data{
-            if env::account_balance() < offer.price {
-                env::panic_str(&"Paras: Not enough balance to refund offer");
-            }
-            Promise::new(buyer_id.clone()).transfer(offer.price);
+            // refund previous offer
+            self.internal_transfer_near(buyer_id.clone(), offer.price);
         }
   
         let storage_amount = self.storage_minimum_balance().0;
@@ -824,10 +822,7 @@ impl Contract {
         )
         .expect("Paras: Offer not found");
 
-        if env::account_balance() < offer_data.price {
-            env::panic_str(&"Paras: Not enough balance to refund offer");
-        }
-        Promise::new(offer_data.buyer_id).transfer(offer_data.price);
+        self.internal_transfer_near(offer_data.buyer_id, offer_data.price);
 
         env::log_str(
             &json!({
@@ -1054,7 +1049,7 @@ impl Contract {
         } else {
             if !is_promise_success() {
                 if offer_data.ft_token_id == near_account() {
-                    Promise::new(offer_data.buyer_id.clone()).transfer(u128::from(offer_data.price));
+                    self.internal_transfer_near(offer_data.buyer_id.clone(), u128::from(offer_data.price));
                     env::log_str(
                         &json!({
                     "type": "resolve_purchase_fail",
@@ -1074,9 +1069,9 @@ impl Contract {
             } else if offer_data.ft_token_id == near_account() {
                 let treasury_fee =
                     offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
-                Promise::new(seller_id.clone()).transfer(offer_data.price - treasury_fee);
+                self.internal_transfer_near(seller_id.clone(), offer_data.price - treasury_fee);
                 if treasury_fee > 0 {
-                    Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                    self.internal_transfer_near(self.treasury_id.clone(), treasury_fee)
                 }
 
                 env::log_str(
@@ -1107,12 +1102,12 @@ impl Contract {
 
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
-                    Promise::new(receiver_id).transfer(amount.0 - treasury_fee);
+                    self.internal_transfer_near(receiver_id, amount.0 - treasury_fee);
                     if treasury_fee != 0 {
-                        Promise::new(self.treasury_id.clone()).transfer(treasury_fee);
+                        self.internal_transfer_near(self.treasury_id.clone(), treasury_fee);
                     }
                 } else {
-                    Promise::new(receiver_id).transfer(amount.0);
+                    self.internal_transfer_near(receiver_id, amount.0)
                 }
             }
 
@@ -1719,7 +1714,7 @@ impl Contract {
             bids.retain(|bid| {
               if bid.bidder_id == bidder_id {
                 // refund
-                Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+                self.internal_transfer_near(bid.bidder_id.clone(), bid.price.0);
               }
 
               bid.bidder_id != bidder_id
@@ -1775,7 +1770,7 @@ impl Contract {
       bids.retain(|bid| {
         if bid.bidder_id == account_id {
           // refund
-          Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+            self.internal_transfer_near(bid.bidder_id.clone(), bid.price.0);
         }
 
         bid.bidder_id != account_id
@@ -1861,7 +1856,7 @@ impl Contract {
         // refund all except selected bids
         for bid in &bids {
           // refund
-          Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+            self.internal_transfer_near(bid.bidder_id.clone(), bid.price.0);
         }
         bids.clear();
 
@@ -1925,7 +1920,7 @@ impl Contract {
 
         // refund all except selected bids
         for bid in &bids {
-          Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+            self.internal_transfer_near(bid.bidder_id.clone(), bid.price.0);
         }
 
         bids.clear();
@@ -2106,7 +2101,7 @@ impl Contract {
 
                 if let Some(ref bids) = market_data.bids {
                     for bid in bids {
-                        Promise::new(bid.bidder_id.clone()).transfer(bid.price.0);
+                        self.internal_transfer_near(bid.bidder_id.clone(), bid.price.0);
                     }
                 };
 
@@ -2223,7 +2218,7 @@ impl Contract {
         let diff = u128::from(len) * STORAGE_ADD_MARKET_DATA;
         amount -= diff;
         if amount > 0 {
-            Promise::new(owner_id.clone()).transfer(amount);
+            self.internal_transfer_near(owner_id.clone(), amount);
         }
         if diff > 0 {
             self.storage_deposits.insert(&owner_id, &diff);
@@ -2314,6 +2309,14 @@ impl Contract {
             self.owner_id,
             "Paras: Owner only"
         )
+    }
+
+    fn internal_transfer_near(&self, account_id: AccountId, amount: Balance){
+        let balance = env::account_balance();
+        if balance < amount {
+            env::panic_str(&format!("Paras: Not enough balance to transfer near, balance: {}, amount: {}", balance, amount));
+        }
+        Promise::new(account_id).transfer(amount);
     }
 }
 
