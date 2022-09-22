@@ -585,7 +585,7 @@ impl Contract {
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
 
-                    let amount = amount.0 - treasury_fee;
+                    let amount = amount.0.saturating_sub(treasury_fee);
                     if amount > 0{
                         Promise::new(receiver_id).transfer(amount);
                     }
