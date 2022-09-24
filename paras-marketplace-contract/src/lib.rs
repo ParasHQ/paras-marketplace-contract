@@ -648,8 +648,8 @@ impl Contract {
             &OfferData {
                 buyer_id: buyer_id.clone().into(),
                 nft_contract_id: nft_contract_id.into(),
-                token_id: token_id,
-                token_series_id: token_series_id,
+                token_id,
+                token_series_id,
                 ft_token_id: ft_token_id.into(),
                 price: price.into(),
             },
@@ -1216,8 +1216,8 @@ impl Contract {
             is_active: None,
             ft_token_id: None,
             nft_contract_id: nft_contract_id.into(),
-            token_id: token_id,
-            token_series_id: token_series_id,
+            token_id,
+            token_series_id,
         };
         let mut buyer_trade_list = self
             .trades
@@ -2007,7 +2007,7 @@ impl Contract {
                 token_id: token_id.clone(),
                 ft_token_id: ft_token_id.clone(),
                 price: price.into(),
-                bids: bids,
+                bids,
                 started_at: match started_at {
                     Some(x) => Some(x.0),
                     None => None,
@@ -2022,7 +2022,7 @@ impl Contract {
                 },
                 accept_nft_contract_id: None,
                 accept_token_id: None,
-                is_auction: is_auction,
+                is_auction,
             },
         );
 
