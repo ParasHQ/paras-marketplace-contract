@@ -1069,7 +1069,12 @@ impl Contract {
             } else if offer_data.ft_token_id == near_account() {
                 let treasury_fee =
                     offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
-                self.internal_transfer_near(seller_id.clone(), offer_data.price - treasury_fee);
+
+                let amount = offer_data.price.saturating_sub(treasury_fee);
+                if amount > 0{
+                    self.internal_transfer_near(seller_id.clone(), amount);
+                }
+
                 if treasury_fee > 0 {
                     self.internal_transfer_near(self.treasury_id.clone(), treasury_fee)
                 }
