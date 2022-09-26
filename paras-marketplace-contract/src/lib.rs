@@ -21,6 +21,7 @@ const GAS_FOR_CALLBACK_FIRST_TRADE: Gas = Gas(30_000_000_000_000);
 const GAS_FOR_CALLBACK_SECOND_TRADE: Gas = Gas(80_000_000_000_000);
 const NO_DEPOSIT: Balance = 0;
 const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
+const MAX_TREASURY_PERCENTAGE: u16 = 10_000;
 
 pub const STORAGE_ADD_MARKET_DATA: u128 = 8590000000000000000000;
 pub const FIVE_MINUTES: u64 = 300000000000;
@@ -219,6 +220,8 @@ impl Contract {
         paras_nft_contracts: Option<Vec<AccountId>>,
         current_fee: u16,
     ) -> Self {
+        assert!(current_fee < MAX_TREASURY_PERCENTAGE, "Paras: fee is higher than {}", MAX_TREASURY_PERCENTAGE);
+
         let mut this = Self {
             owner_id: owner_id.into(),
             treasury_id: treasury_id.into(),
@@ -296,7 +299,7 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner();
 
-        assert!(next_fee < 10_000, "Paras: fee is higher than 10_000");
+        assert!(next_fee < MAX_TREASURY_PERCENTAGE, "Paras: fee is higher than {}", MAX_TREASURY_PERCENTAGE);
 
         if start_time.is_none() {
             self.transaction_fee.current_fee = next_fee;
@@ -549,7 +552,7 @@ impl Contract {
                         .to_string(),
                 );
             } else if market_data.ft_token_id == near_account() {
-                let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
+                let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / (MAX_TREASURY_PERCENTAGE as u128);
                 let contract_and_token_id = format!("{}{}{}", &market_data.nft_contract_id, DELIMETER, &market_data.token_id);
                 self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
 
@@ -581,8 +584,7 @@ impl Contract {
 
         // Payout (transfer to royalties and seller)
         if market_data.ft_token_id == near_account() {
-            // 5% fee for treasury
-            let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
+            let treasury_fee = (price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id)) / (MAX_TREASURY_PERCENTAGE as u128);
             let contract_and_token_id = format!("{}{}{}", &market_data.nft_contract_id, DELIMETER, &market_data.token_id);
             self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
 
@@ -1072,7 +1074,7 @@ impl Contract {
                 }
             } else if offer_data.ft_token_id == near_account() {
                 let treasury_fee =
-                    offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
+                    offer_data.price as u128 * self.calculate_current_transaction_fee() / (MAX_TREASURY_PERCENTAGE as u128);
 
                 let amount_after = offer_data.price.saturating_sub(treasury_fee);
                 if amount_after > 0 {
@@ -1107,7 +1109,7 @@ impl Contract {
         if offer_data.ft_token_id == near_account() {
             // 5% fee for treasury
             let treasury_fee =
-                offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
+                offer_data.price as u128 * self.calculate_current_transaction_fee() / (MAX_TREASURY_PERCENTAGE as u128);
 
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
