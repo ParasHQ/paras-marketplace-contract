@@ -552,7 +552,11 @@ impl Contract {
                 let treasury_fee = price.0 * self.calculate_market_data_transaction_fee(&market_data.nft_contract_id, &market_data.token_id) / 10_000u128;
                 let contract_and_token_id = format!("{}{}{}", &market_data.nft_contract_id, DELIMETER, &market_data.token_id);
                 self.market_data_transaction_fee.transaction_fee.remove(&contract_and_token_id);
-                self.internal_transfer_near(market_data.owner_id.clone(), price.0 - treasury_fee);
+
+                let price_after = price.0.saturating_sub(treasury_fee);
+                if price_after > 0 {
+                    self.internal_transfer_near(market_data.owner_id.clone(), price.0);
+                }
                 if treasury_fee > 0 {
                     self.internal_transfer_near(self.treasury_id.clone(), treasury_fee);
                 }
@@ -585,9 +589,9 @@ impl Contract {
             for (receiver_id, amount) in payout {
                 if receiver_id == market_data.owner_id {
 
-                    let amount = amount.0.saturating_sub(treasury_fee);
-                    if amount > 0{
-                        self.internal_transfer_near(receiver_id, amount);
+                    let amount_after = amount.0.saturating_sub(treasury_fee);
+                    if amount_after > 0 {
+                        self.internal_transfer_near(receiver_id, amount_after);
                     }
 
                     if treasury_fee != 0 {
@@ -1070,9 +1074,9 @@ impl Contract {
                 let treasury_fee =
                     offer_data.price as u128 * self.calculate_current_transaction_fee() / 10_000u128;
 
-                let amount = offer_data.price.saturating_sub(treasury_fee);
-                if amount > 0{
-                    self.internal_transfer_near(seller_id.clone(), amount);
+                let amount_after = offer_data.price.saturating_sub(treasury_fee);
+                if amount_after > 0{
+                    self.internal_transfer_near(seller_id.clone(), amount_after);
                 }
 
                 if treasury_fee > 0 {
@@ -1107,8 +1111,11 @@ impl Contract {
 
             for (receiver_id, amount) in payout {
                 if receiver_id == seller_id {
-                    self.internal_transfer_near(receiver_id, amount.0 - treasury_fee);
-                    if treasury_fee != 0 {
+                    let amount_after = amount.0.saturating_sub(treasury_fee);
+                    if amount_after > 0 {
+                        self.internal_transfer_near(receiver_id, amount_after);
+                    }
+                    if treasury_fee > 0 {
                         self.internal_transfer_near(self.treasury_id.clone(), treasury_fee);
                     }
                 } else {
