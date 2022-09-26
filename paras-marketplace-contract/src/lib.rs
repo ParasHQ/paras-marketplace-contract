@@ -2990,4 +2990,18 @@ mod tests {
         assert_eq!(market_data_transaction_fee, 500);
     }
 
+    #[test]
+    fn test_audit_issue_1_extra_attached_near_may_be_locked() {}
+
+    #[test]
+    fn test_audit_issue_4_denial_of_user_legitimate_request() {}
+
+    #[test]
+    fn test_audit_issue_5_improper_market_type_assertion() {}
+
+    #[test]
+    fn test_audit_recommendation_3_failure_of_near_transferring_without_enough_balance() {}
+
+
+
 }
