@@ -555,7 +555,7 @@ impl Contract {
 
                 let price_after = price.0.saturating_sub(treasury_fee);
                 if price_after > 0 {
-                    self.internal_transfer_near(market_data.owner_id.clone(), price.0);
+                    self.internal_transfer_near(market_data.owner_id.clone(), price_after);
                 }
                 if treasury_fee > 0 {
                     self.internal_transfer_near(self.treasury_id.clone(), treasury_fee);
