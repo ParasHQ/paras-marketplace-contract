@@ -1820,7 +1820,7 @@ fn test_50_bid_and_cancel() {
   for x in 0..150 {
     let user_id: String = format!("user-{}", x.to_string());
     users.push(root.create_user(AccountId::new_unchecked(user_id), to_yocto("100000")));
-    bid_amount = bid_amount + bid_amount / 100 * 5;
+    bid_amount = bid_amount + bid_amount * 5 / 100;
 
     users[x].call(
         marketplace.account_id(),
