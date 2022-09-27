@@ -562,7 +562,7 @@ impl Contract {
                     self.internal_transfer_near(market_data.owner_id.clone(), price_after);
                 }
                 if treasury_fee > 0 {
-                    self.internal_transfer_near(self.treasury_id.clone(), price_after.min(treasury_fee));
+                    self.internal_transfer_near(self.treasury_id.clone(), price.0.min(treasury_fee));
                 }
 
                 env::log_str(
@@ -598,7 +598,7 @@ impl Contract {
                     }
 
                     if treasury_fee > 0 {
-                        self.internal_transfer_near(self.treasury_id.clone(), amount_after.min(treasury_fee));
+                        self.internal_transfer_near(self.treasury_id.clone(), amount.0.min(treasury_fee));
                     }
                 } else {
                     self.internal_transfer_near(receiver_id, amount.0);
@@ -1083,7 +1083,7 @@ impl Contract {
                 }
 
                 if treasury_fee > 0 {
-                    self.internal_transfer_near(self.treasury_id.clone(), amount_after.min(treasury_fee));
+                    self.internal_transfer_near(self.treasury_id.clone(), offer_data.price.min(treasury_fee));
                 }
 
                 env::log_str(
@@ -1119,7 +1119,7 @@ impl Contract {
                         self.internal_transfer_near(receiver_id, amount_after);
                     }
                     if treasury_fee > 0 {
-                        self.internal_transfer_near(self.treasury_id.clone(), amount_after.min(treasury_fee));
+                        self.internal_transfer_near(self.treasury_id.clone(), amount.0.min(treasury_fee));
                     }
                 } else {
                     self.internal_transfer_near(receiver_id, amount.0)

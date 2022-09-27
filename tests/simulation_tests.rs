@@ -10,6 +10,7 @@ use near_sdk::{
     AccountId, Gas,
 };
 use near_sdk_sim::{to_yocto, view};
+use near_sdk_sim::views::GasPriceView;
 
 pub type TokenId = String;
 #[derive(Serialize, Deserialize)]
@@ -1847,7 +1848,7 @@ fn test_50_bid_and_cancel() {
 }
 
 #[test]
-fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_fee() {
+fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_fee_large() {
     let (marketplace, nft, treasury, alice, bob, chandra, darmaji, root) = init();
 
     alice.call(
@@ -1863,9 +1864,11 @@ fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_
     let marketplace_balance = marketplace.user_account.account().unwrap().amount;
     create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
     let msg =
-        &json!({"market_type":"sale","price": to_yocto("3").to_string(), "ft_token_id": "near"})
+        &json!({"market_type":"sale","price": to_yocto("20").to_string(), "ft_token_id": "near"})
             .to_string();
 
+    let treasury_balance = treasury.account().unwrap().amount;
+    let owner_share = to_yocto("20") * 5_500 / 10_000;
     chandra
         .call(
             marketplace.account_id(),
@@ -1892,6 +1895,7 @@ fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_
         )
         .assert_success();
 
+    let chandra_balance = chandra.account().unwrap().amount;
     //buyer
     let buyer_person = root.create_user(account_o(), to_yocto("100"));
 
@@ -1905,12 +1909,22 @@ fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_
             .to_string()
             .into_bytes(),
         GAS_BUY,
-        to_yocto("3"),
+        to_yocto("20"),
     );
     outcome.assert_success();
     let marketplace_balance_after = marketplace.user_account.account().unwrap().amount;
+    let treasury_balance_after = treasury.account().unwrap().amount;
+    let chandra_balance_after = chandra.account().unwrap().amount;
+
     assert!(marketplace_balance < marketplace_balance_after);
 
+    // CHECK 1.a.resolve_purchase : treasury got the owner_share
+    assert_eq!(treasury_balance + owner_share, treasury_balance_after);
+    // CHECK 1.b.resolve_purchase : owner balance still the same
+    assert_eq!(chandra_balance, chandra_balance_after);
+
+
+    let seller_person = buyer_person;
     chandra.call(
         marketplace.account_id(),
         "add_offer",
@@ -1918,15 +1932,15 @@ fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_
             "nft_contract_id": nft.account_id(),
             "token_id": format!("{}:{}", "1", "1"),
             "ft_token_id": "near",
-            "price": to_yocto("3").to_string()
+            "price": to_yocto("20").to_string()
         })
             .to_string()
             .into_bytes(),
         GAS_BUY,
-        to_yocto("3"),
+        to_yocto("20"),
     ).assert_success();
 
-    buyer_person
+    seller_person
         .call(
             nft.account_id(),
             "nft_approve",
@@ -1934,7 +1948,7 @@ fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_
                 "token_id": "1:1",
                 "account_id": marketplace.account_id(),
                 "msg": &json!(
-                    {"market_type":"accept_offer","buyer_id": chandra.account_id() , "price":  to_yocto("3").to_string() })
+                    {"market_type":"accept_offer","buyer_id": chandra.account_id() , "price":  to_yocto("20").to_string() })
                     .to_string()
             })
                 .to_string()
@@ -1943,8 +1957,132 @@ fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_
             STORAGE_APPROVE,
         ).assert_success();
 
+    // CHECK 1.a.resolve_offer : treasury got the owner_share
+    let treasury_balance_after_after = treasury.account().unwrap().amount;
+    assert_eq!(treasury_balance_after + owner_share, treasury_balance_after_after);
+
     let marketplace_balance_after_after = marketplace.user_account.account().unwrap().amount;
     assert!(marketplace_balance_after < marketplace_balance_after_after);
-
 }
 
+
+#[test]
+fn test_issue_2_audit_potential_of_lost_of_user_assets_due_to_improper_treasury_fee_small() {
+    let (marketplace, nft, treasury, alice, bob, chandra, darmaji, root) = init();
+
+    alice.call(
+        marketplace.account_id(),
+        "set_transaction_fee",
+        &json!({
+            "next_fee": 1
+        }).to_string().into_bytes(),
+        DEFAULT_GAS,
+        1
+    ).assert_success();
+
+    let marketplace_balance = marketplace.user_account.account().unwrap().amount;
+    create_nft_and_mint_one(&nft, &alice, &bob, &chandra, &darmaji);
+    let msg =
+        &json!({"market_type":"sale","price": to_yocto("20").to_string(), "ft_token_id": "near"})
+            .to_string();
+
+    let treasury_balance = treasury.account().unwrap().amount;
+    let owner_share = to_yocto("20") * 5_500 / 10_000;
+    let treasury_share = to_yocto("20") * 1 / 10_000;
+    chandra
+        .call(
+            marketplace.account_id(),
+            "storage_deposit",
+            &json!({}).to_string().into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_ADD_MARKET_DATA,
+        )
+        .assert_success();
+
+    chandra
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": format!("{}:{}", "1", "1"),
+                "account_id": marketplace.account_id(),
+                "msg": msg,
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        )
+        .assert_success();
+
+    let chandra_balance = chandra.account().unwrap().amount;
+    //buyer
+    let buyer_person = root.create_user(account_o(), to_yocto("100"));
+
+    let outcome = buyer_person.call(
+        marketplace.account_id(),
+        "buy",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+        })
+            .to_string()
+            .into_bytes(),
+        GAS_BUY,
+        to_yocto("20"),
+    );
+    outcome.assert_success();
+    let marketplace_balance_after = marketplace.user_account.account().unwrap().amount;
+    let treasury_balance_after = treasury.account().unwrap().amount;
+    let chandra_balance_after = chandra.account().unwrap().amount;
+
+    assert!(marketplace_balance < marketplace_balance_after);
+
+    // CHECK 2.a.resolve_purchase : treasury got treasury_share
+    assert_eq!(treasury_balance + treasury_share, treasury_balance_after);
+    // CHECK 1.b.resolve_purchase : owner got owner_share - treasury_share
+    assert_eq!(chandra_balance + owner_share - treasury_share, chandra_balance_after);
+
+
+    let seller_person = buyer_person;
+
+    chandra.call(
+        marketplace.account_id(),
+        "add_offer",
+        &json!({
+            "nft_contract_id": nft.account_id(),
+            "token_id": format!("{}:{}", "1", "1"),
+            "ft_token_id": "near",
+            "price": to_yocto("20").to_string()
+        })
+            .to_string()
+            .into_bytes(),
+        GAS_BUY,
+        to_yocto("20"),
+    ).assert_success();
+
+    seller_person
+        .call(
+            nft.account_id(),
+            "nft_approve",
+            &json!({
+                "token_id": "1:1",
+                "account_id": marketplace.account_id(),
+                "msg": &json!(
+                    {"market_type":"accept_offer","buyer_id": chandra.account_id() , "price":  to_yocto("20").to_string() })
+                    .to_string()
+            })
+                .to_string()
+                .into_bytes(),
+            DEFAULT_GAS,
+            STORAGE_APPROVE,
+        ).assert_success();
+
+
+    // CHECK 2.a.resolve_offer : treasury got the treasury_share
+    let treasury_balance_after_after = treasury.account().unwrap().amount;
+    assert_eq!(treasury_balance_after + treasury_share, treasury_balance_after_after);
+
+    let marketplace_balance_after_after = marketplace.user_account.account().unwrap().amount;
+    assert!(marketplace_balance_after < marketplace_balance_after_after);
+}
