@@ -31,7 +31,6 @@ pub fn create_nft_and_mint_one(
 ) {
 
     let royalties: HashMap<AccountId,u32> = HashMap::from([
-        ( owner.account_id.clone(), 100u32),
         ( AccountId::new_unchecked("h".repeat(64)) , 100u32),
         ( AccountId::new_unchecked("h2".repeat(32)) , 100u32),
         ( AccountId::new_unchecked("h3".repeat(32)) , 100u32),
@@ -78,18 +77,6 @@ pub fn create_nft_and_mint_one(
         ( AccountId::new_unchecked("l8".repeat(32)) , 100u32),
         ( AccountId::new_unchecked("l9".repeat(32)) , 100u32)
     ]);
-    println!("{}",&json!({
-                "token_metadata": {
-                    "title": "A".repeat(200),
-                    "reference": "A".repeat(59),
-                    "media": "A".repeat(59),
-                    "copies": 100u64,
-                },
-                "creator_id": creator.account_id(),
-                "price": to_yocto("1").to_string(),
-                "royalty": royalties,
-            })
-        .to_string());
     creator
         .call(
             nft.account_id(),
