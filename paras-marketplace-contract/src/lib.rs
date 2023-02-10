@@ -1585,7 +1585,7 @@ impl Contract {
                 1,
                 GAS_FOR_NFT_TRANSFER,
             );
-            env::panic_str(&"Paras: seller's nft failed to trade, rollback buyer's nft");
+            env::log_str(&"Paras: seller's nft failed to trade, rollback buyer's nft")
         } else {
             self.internal_swap_nft(
                 buyer_id,
